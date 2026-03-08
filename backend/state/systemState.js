@@ -54,6 +54,9 @@ const systemState = {
 
   // Generated alerts (populated by alertEngine)
   alerts: [],
+
+  // AI recommendations (populated by recommendationEngine)
+  recommendations: [],
   
   // System metrics (calculated by metricsController)
   metrics: {

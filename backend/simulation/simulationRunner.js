@@ -23,6 +23,7 @@ const startEventSimulation = require("./eventSimulator");
 // Import AI engines
 const { startPredictionEngine } = require("../ai/predictionEngine");
 const { startAlertEngine } = require("../ai/alertEngine");
+const { startRecommendationEngine } = require("../ai/recommendationEngine");
 
 // Import metrics updater
 const { startMetricsUpdater } = require("../controllers/metricsController");
@@ -55,6 +56,7 @@ function startSimulations() {
   console.log("\n[SimulationRunner] Starting AI engines...");
   startPredictionEngine();
   startAlertEngine();
+  startRecommendationEngine();
   
   // Start metrics calculation
   console.log("\n[SimulationRunner] Starting metrics updater...");
