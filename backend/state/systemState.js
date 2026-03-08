@@ -49,8 +49,14 @@ const systemState = {
   // Metro system (status updated by simulation)
   metro: metro,
   
+  // City events (populated by eventSimulator)
+  events: [],
+
   // Generated alerts (populated by alertEngine)
   alerts: [],
+
+  // AI recommendations (populated by recommendationEngine)
+  recommendations: [],
   
   // System metrics (calculated by metricsController)
   metrics: {

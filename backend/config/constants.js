@@ -21,7 +21,7 @@ const UNDERUTILIZED_THRESHOLD = 0.30; // 30% capacity = underutilized
 
 const DEMAND_MIN = 20;
 const DEMAND_MAX = 120;
-const DEMAND_SPIKE_THRESHOLD = 1.5; // 50% above base = spike
+const DEMAND_SPIKE_THRESHOLD = 1.3; // 30% above current = spike
 const RUSH_HOUR_MULTIPLIER = 1.8;
 
 // =============================================================================
@@ -41,6 +41,7 @@ const METRO_DELAY_IMPACT_THRESHOLD = 10; // Minutes delay that triggers bus dema
 
 const ALERT_TYPES = {
   OVERCROWDED_BUS: "overcrowded_bus",
+  OVERCROWDED_ROUTE: "overcrowded_route",
   UNDERUTILIZED_ROUTE: "underutilized_route",
   DEMAND_SPIKE: "demand_spike",
   METRO_DISRUPTION: "metro_disruption",

@@ -74,6 +74,14 @@ router.get("/metro", (req, res) => {
 });
 
 /**
+ * GET /events
+ * Returns active city events
+ */
+router.get("/events", (req, res) => {
+  res.json(systemState.events.filter(e => e.active));
+});
+
+/**
  * GET /alerts
  * Returns active alerts (not acknowledged)
  */
