@@ -49,6 +49,9 @@ const systemState = {
   // Metro system (status updated by simulation)
   metro: metro,
   
+  // City events (populated by eventSimulator)
+  events: [],
+
   // Generated alerts (populated by alertEngine)
   alerts: [],
   

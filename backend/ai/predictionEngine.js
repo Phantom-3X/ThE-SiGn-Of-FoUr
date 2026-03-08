@@ -83,9 +83,19 @@ function predictZoneDemand(zone) {
  * Updates systemState.demandZones[].predicted_demand
  */
 function runPredictions() {
-  // TODO: Iterate through systemState.demandZones
-  // TODO: For each zone, calculate prediction
-  // TODO: Update zone.predicted_demand
+  systemState.demandZones.forEach(zone => {
+    let predicted = predictZoneDemand(zone);
+
+    // Boost prediction if an active event targets this zone
+    const activeEvent = (systemState.events || []).find(
+      e => e.active && e.zone_id === zone.zone_id
+    );
+    if (activeEvent) {
+      predicted = Math.round(predicted * 1.2);
+    }
+
+    zone.predicted_demand = predicted;
+  });
   console.log("[PredictionEngine] Predictions updated");
 }
 

@@ -12,6 +12,7 @@
 const BUS_UPDATE_INTERVAL = 3000;      // How often bus positions update
 const DEMAND_UPDATE_INTERVAL = 5000;   // How often demand values change
 const METRO_UPDATE_INTERVAL = 10000;   // How often metro status changes
+const EVENT_UPDATE_INTERVAL = 60000;   // How often city events are evaluated
 const PREDICTION_INTERVAL = 15000;     // How often AI predictions run
 const ALERT_CHECK_INTERVAL = 5000;     // How often alerts are evaluated
 const METRICS_UPDATE_INTERVAL = 10000; // How often metrics are recalculated
@@ -70,6 +71,7 @@ module.exports = {
   PREDICTION_INTERVAL,
   ALERT_CHECK_INTERVAL,
   METRICS_UPDATE_INTERVAL,
+  EVENT_UPDATE_INTERVAL,
 
   // Settings
   SIMULATION_SETTINGS,
