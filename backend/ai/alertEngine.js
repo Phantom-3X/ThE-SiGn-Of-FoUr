@@ -98,10 +98,20 @@ function checkUnderutilizedRoutes() {
     routeLoads[bus.route_id].count++;
   });
   
-  // Check each route
+  // Check each route for underutilization AND overcrowding
   Object.entries(routeLoads).forEach(([routeId, data]) => {
     const avgLoadFactor = data.totalLoad / data.totalCapacity;
     
+    if (avgLoadFactor > OVERCROWDED_THRESHOLD) {
+      const alert = createAlert(
+        ALERT_TYPES.OVERCROWDED_ROUTE || "overcrowded_route",
+        SEVERITY.HIGH,
+        `Route ${routeId} approaching capacity at ${Math.round(avgLoadFactor * 100)}% average load`,
+        { route_id: routeId, avg_load_factor: avgLoadFactor, bus_count: data.count }
+      );
+      addAlert(alert);
+    }
+
     if (avgLoadFactor < UNDERUTILIZED_THRESHOLD && data.count > 1) {
       const alert = createAlert(
         ALERT_TYPES.UNDERUTILIZED_ROUTE,

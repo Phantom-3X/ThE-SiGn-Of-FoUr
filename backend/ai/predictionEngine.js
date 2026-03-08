@@ -1,123 +1,144 @@
 /**
  * predictionEngine.js
- * 
- * AI module for demand prediction using heuristic models.
- * 
- * Responsibilities:
- * - Generate predicted_demand values for demand zones
- * - Use time-based patterns for prediction
- * - Factor in historical trends and metro status
- * - Provide short-term (15 min) and medium-term (1 hr) predictions
- * 
- * Data dependencies:
- * - systemState.demandZones[] - zones with base_demand, current_demand
- * - systemState.metro - metro status for impact calculation
+ *
+ * AI module for demand prediction using weighted moving average,
+ * trend detection, time-of-day adjustment, and event awareness.
+ *
+ * Interval: every 10 seconds
  */
 
 const systemState = require("../state/systemState");
-const { PREDICTION_INTERVAL, RUSH_HOURS } = require("../config/simulationConfig");
-const { RUSH_HOUR_MULTIPLIER } = require("../config/constants");
-const { isRushHour, getMinutesUntilRushHour } = require("../utils/timeUtils");
+const { PREDICTION_INTERVAL } = require("../config/simulationConfig");
+const { DEMAND_MIN, DEMAND_MAX } = require("../config/constants");
+const { isRushHour, isNightTime } = require("../utils/timeUtils");
+
+const HISTORY_SIZE = 5;
+const WEIGHTS = [1, 2, 3, 4, 5]; // recent values weigh more
 
 // =============================================================================
-// PREDICTION MODELS
+// HISTORY MANAGEMENT
 // =============================================================================
 
 /**
- * Simple moving average prediction
- * @param {number} currentValue - Current demand value
- * @param {number} baseValue - Base demand value
- * @returns {number} Predicted value
+ * Ensure zone has a demand_history array; append current_demand.
  */
-function movingAveragePrediction(currentValue, baseValue) {
-  // TODO: Calculate weighted average of current and base
-  // TODO: Apply trend factor based on recent changes
-  return currentValue;
+function recordHistory(zone) {
+  if (!zone.demand_history) zone.demand_history = [];
+  zone.demand_history.push(zone.current_demand);
+  if (zone.demand_history.length > HISTORY_SIZE) {
+    zone.demand_history.shift();
+  }
+}
+
+// =============================================================================
+// PREDICTION STEPS
+// =============================================================================
+
+/**
+ * Step 1 — Weighted moving average over the history window.
+ */
+function weightedMovingAverage(history) {
+  const len = history.length;
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (let i = 0; i < len; i++) {
+    const w = WEIGHTS[WEIGHTS.length - len + i]; // align to tail of weights
+    weightedSum += history[i] * w;
+    weightTotal += w;
+  }
+  return weightedSum / weightTotal;
 }
 
 /**
- * Time-based prediction adjustment
- * @param {number} basePrediction - Initial prediction
- * @returns {number} Adjusted prediction
+ * Step 2 — Trend detection: positive = rising, negative = falling.
  */
-function applyTimeFactor(basePrediction) {
-  // TODO: Check time until next rush hour
-  // TODO: Gradually increase prediction as rush hour approaches
-  // TODO: Apply RUSH_HOUR_MULTIPLIER during rush hours
-  return basePrediction;
+function detectTrend(history) {
+  if (history.length < 2) return 0;
+  return history[history.length - 1] - history[history.length - 2];
 }
 
 /**
- * Metro impact prediction adjustment
- * @param {number} basePrediction - Initial prediction
- * @param {Object} zone - Demand zone
- * @returns {number} Adjusted prediction
+ * Step 3 — Time-of-day multiplier.
  */
-function applyMetroImpact(basePrediction, zone) {
-  // TODO: Check systemState.metro.status
-  // TODO: If delayed, increase prediction for zones near metro stations
-  // TODO: Calculate proximity bonus
-  return basePrediction;
+function timeOfDayFactor() {
+  if (isRushHour()) return 1.2;
+  if (isNightTime()) return 0.8;
+  return 1.0;
 }
 
 /**
- * Generate prediction for a single zone
- * @param {Object} zone - Demand zone object
- * @returns {number} Predicted demand value
+ * Step 4 — Event adjustment: boost if active event targets this zone.
+ */
+function eventFactor(zoneId) {
+  const activeEvent = (systemState.events || []).find(
+    e => e.active && e.zone_id === zoneId
+  );
+  return activeEvent ? 1.2 : 1.0;
+}
+
+// =============================================================================
+// MAIN PREDICTION
+// =============================================================================
+
+/**
+ * Generate prediction for a single zone.
  */
 function predictZoneDemand(zone) {
-  // TODO: Start with moving average prediction
-  // TODO: Apply time factor
-  // TODO: Apply metro impact
-  // TODO: Clamp to reasonable bounds
-  // TODO: Return rounded prediction
-  return zone.current_demand;
+  const history = zone.demand_history;
+  if (!history || history.length === 0) return zone.current_demand;
+
+  // Step 1: weighted average
+  let prediction = weightedMovingAverage(history);
+
+  // Step 2: add trend momentum
+  const trend = detectTrend(history);
+  prediction += trend * 0.5;
+
+  // Step 3: time-of-day
+  prediction *= timeOfDayFactor();
+
+  // Step 4: event boost
+  prediction *= eventFactor(zone.zone_id);
+
+  // Clamp and round
+  prediction = Math.round(Math.max(DEMAND_MIN, Math.min(DEMAND_MAX, prediction)));
+  return prediction;
 }
 
-// =============================================================================
-// MAIN PREDICTION FUNCTIONS
-// =============================================================================
-
 /**
- * Run predictions for all zones
- * Updates systemState.demandZones[].predicted_demand
+ * Run predictions for all zones.
  */
 function runPredictions() {
-  // TODO: Iterate through systemState.demandZones
-  // TODO: For each zone, calculate prediction
-  // TODO: Update zone.predicted_demand
+  systemState.demandZones.forEach(zone => {
+    recordHistory(zone);
+    zone.predicted_demand = predictZoneDemand(zone);
+  });
   console.log("[PredictionEngine] Predictions updated");
 }
 
 /**
- * Get prediction summary for dashboard
- * @returns {Object} Summary of predictions
+ * Get prediction summary for dashboard.
  */
 function getPredictionSummary() {
-  // TODO: Calculate average predicted demand
-  // TODO: Identify zones with highest predicted increase
-  // TODO: Return summary object
-  return {
-    averagePredicted: 0,
-    highDemandZones: [],
-    timestamp: new Date().toISOString()
-  };
+  const zones = systemState.demandZones;
+  const avgPredicted = zones.length
+    ? Math.round(zones.reduce((s, z) => s + z.predicted_demand, 0) / zones.length)
+    : 0;
+
+  const highDemandZones = zones
+    .filter(z => z.predicted_demand > z.current_demand * 1.2)
+    .map(z => ({ zone_id: z.zone_id, name: z.name, predicted: z.predicted_demand }));
+
+  return { averagePredicted: avgPredicted, highDemandZones, timestamp: new Date().toISOString() };
 }
 
 // =============================================================================
-// EXPORTED FUNCTIONS
+// STARTUP
 // =============================================================================
 
-/**
- * Start the prediction engine loop
- */
 function startPredictionEngine() {
   console.log("[PredictionEngine] Initializing prediction engine...");
-  
-  setInterval(() => {
-    runPredictions();
-  }, PREDICTION_INTERVAL);
-  
+  setInterval(runPredictions, PREDICTION_INTERVAL);
   console.log(`[PredictionEngine] Running every ${PREDICTION_INTERVAL}ms`);
 }
 
