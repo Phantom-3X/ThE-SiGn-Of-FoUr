@@ -16,12 +16,36 @@ It demonstrates how **data-driven fleet orchestration** can improve urban transi
 
 https://the-sign-of-four-fleet-orchestrator.vercel.app
 
-### Backend API
+### Backend API  
 
-https://fleet-orchestrator-backend-f4r0.onrender.com (/dashboard)
+https://fleet-orchestrator-backend-f4r0.onrender.com
 
----
+**Fleet Dashboard API (Sample Data Endpoint):**  
 
+https://fleet-orchestrator-backend-f4r0.onrender.com/dashboard
+
+This endpoint returns real-time fleet telemetry including:
+
+- Bus ID
+- Route ID
+- Latitude & Longitude
+- Capacity
+- Current Load
+- Crowd Status
+
+Example Response:
+
+```json
+{
+  "bus_id": "BUS042",
+  "route_id": "R9",
+  "lat": 18.5989,
+  "lng": 73.7603,
+  "capacity": 50,
+  "current_load": 50,
+  "status": "crowded"
+}
+```
 # 📸 Screenshots
 
 Add screenshots in `/docs`.
