@@ -129,6 +129,7 @@ function checkUnderutilizedRoutes() {
  */
 function checkDemandSpikes() {
   systemState.demandZones.forEach(zone => {
+    if (!zone.current_demand || zone.current_demand === 0) return;
     const spikeRatio = zone.predicted_demand / zone.current_demand;
     
     if (spikeRatio > DEMAND_SPIKE_THRESHOLD) {

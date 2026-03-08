@@ -115,7 +115,7 @@ function updateBusStatus(bus) {
   } else if (loadFactor < 0.30) {
     bus.status = "underutilized";
   } else {
-    bus.status = "normal";
+    bus.status = "active";
   }
 }
 
