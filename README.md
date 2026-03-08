@@ -30,10 +30,10 @@ Example:
 
 ```
 docs/
- ├ dashboard.png
- ├ live-map.png
+ ├ Analytics.png
  ├ control-center.png
- ├ analytics.png
+ ├ dashboard.png
+ ├ map-view.png
 ```
 
 ---
