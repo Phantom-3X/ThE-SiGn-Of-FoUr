@@ -1,17 +1,10 @@
 /**
  * apiRoutes.js
- * 
+ *
  * REST API endpoint definitions for the Fleet Orchestrator.
- * 
- * Responsibilities:
- * - Define all API routes
- * - Connect routes to controllers
- * - Handle request validation
- * - Format responses
- * 
- * Endpoint Categories:
- * - GET: Data retrieval (routes, buses, demand, alerts, metro, metrics)
- * - POST: Actions (deploy bus, change frequency, acknowledge alerts)
+ *
+ * GET  — data retrieval (routes, buses, demand, alerts, metro, metrics, etc.)
+ * POST — operator actions (deploy bus, change frequency, acknowledge alerts, etc.)
  */
 
 const express = require("express");
@@ -33,108 +26,108 @@ const { getPredictionSummary } = require("../ai/predictionEngine");
 // DATA RETRIEVAL ENDPOINTS (GET)
 // =============================================================================
 
-/**
- * GET /routes
- * Returns all bus routes with stops and frequency
- */
+// ── Core entities ────────────────────────────────────────────────────────────
+
 router.get("/routes", (req, res) => {
   res.json(systemState.routes);
 });
 
-/**
- * GET /buses
- * Returns all buses with current positions and loads
- */
+router.get("/routes/:routeId", (req, res) => {
+  const detail = fleetController.getRouteDetails(req.params.routeId);
+  if (!detail) return res.status(404).json({ error: `Route ${req.params.routeId} not found` });
+  res.json(detail);
+});
+
 router.get("/buses", (req, res) => {
+  const { routeId, status } = req.query;
+  if (routeId || status) {
+    return res.json(fleetController.getBusesFiltered(routeId, status));
+  }
   res.json(systemState.buses);
 });
 
-/**
- * GET /depots
- * Returns all depots with bus availability
- */
+router.get("/buses/:busId", (req, res) => {
+  const detail = fleetController.getBusDetails(req.params.busId);
+  if (!detail) return res.status(404).json({ error: `Bus ${req.params.busId} not found` });
+  res.json(detail);
+});
+
 router.get("/depots", (req, res) => {
   res.json(systemState.depots);
 });
 
-/**
- * GET /demand
- * Returns all demand zones with current and predicted demand
- */
 router.get("/demand", (req, res) => {
   res.json(systemState.demandZones);
 });
 
-/**
- * GET /metro
- * Returns metro status and station information
- */
 router.get("/metro", (req, res) => {
   res.json(systemState.metro);
 });
 
-/**
- * GET /events
- * Returns active city events
- */
 router.get("/events", (req, res) => {
   res.json(systemState.events.filter(e => e.active));
 });
 
-/**
- * GET /alerts
- * Returns active alerts (not acknowledged)
- */
+// ── AI / analytics ───────────────────────────────────────────────────────────
+
 router.get("/alerts", (req, res) => {
   res.json(getActiveAlerts());
 });
 
-/**
- * GET /metrics
- * Returns system metrics for dashboard
- */
+router.get("/alert-stats", (req, res) => {
+  res.json(metricsController.getAlertStats());
+});
+
 router.get("/metrics", (req, res) => {
   res.json(metricsController.getMetrics());
 });
 
-/**
- * GET /recommendations
- * Returns AI-generated fleet optimization recommendations
- */
 router.get("/recommendations", (req, res) => {
   const count = parseInt(req.query.count) || 5;
   res.json(getTopRecommendations(count));
 });
 
-/**
- * GET /predictions
- * Returns demand prediction summary
- */
 router.get("/predictions", (req, res) => {
   res.json(getPredictionSummary());
 });
 
-/**
- * GET /fleet-distribution
- * Returns overview of fleet distribution across routes and depots
- */
+// ── Aggregated stats ─────────────────────────────────────────────────────────
+
 router.get("/fleet-distribution", (req, res) => {
   res.json(fleetController.getFleetDistribution());
 });
 
-/**
- * GET /dashboard
- * Returns all data needed for dashboard in single response
- */
+router.get("/route-stats", (req, res) => {
+  res.json(metricsController.getRouteStats());
+});
+
+router.get("/zone-stats", (req, res) => {
+  res.json(metricsController.getZoneStats());
+});
+
+router.get("/system-status", (req, res) => {
+  res.json(metricsController.getSystemStatus());
+});
+
+// ── Dashboard (single-call for the whole UI) ─────────────────────────────────
+
 router.get("/dashboard", (req, res) => {
   res.json({
     buses: systemState.buses,
     routes: systemState.routes,
+    depots: systemState.depots,
     demandZones: systemState.demandZones,
     metro: systemState.metro,
     alerts: getActiveAlerts(),
-    metrics: metricsController.getDashboardMetrics(),
-    recommendations: getTopRecommendations(3),
+    metrics: metricsController.getMetrics(),
+    metricsFormatted: metricsController.getDashboardMetrics(),
+    recommendations: getTopRecommendations(5),
+    events: systemState.events.filter(e => e.active),
+    routeStats: metricsController.getRouteStats(),
+    zoneStats: metricsController.getZoneStats(),
+    alertStats: metricsController.getAlertStats(),
+    fleetDistribution: fleetController.getFleetDistribution(),
+    systemStatus: metricsController.getSystemStatus(),
     timestamp: new Date().toISOString()
   });
 });
@@ -143,119 +136,59 @@ router.get("/dashboard", (req, res) => {
 // ACTION ENDPOINTS (POST)
 // =============================================================================
 
-/**
- * POST /deploy-bus
- * Deploy a bus from depot to route
- * Body: { depotId, routeId }
- */
 router.post("/deploy-bus", (req, res) => {
   const { depotId, routeId } = req.body;
-  
-  // Validate request
   if (!depotId || !routeId) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: depotId, routeId"
-    });
+    return res.status(400).json({ success: false, message: "Missing required fields: depotId, routeId" });
   }
-  
-  const result = fleetController.deployBus(depotId, routeId);
-  res.json(result);
+  res.json(fleetController.deployBus(depotId, routeId));
 });
 
-/**
- * POST /return-bus
- * Return a bus to depot
- * Body: { busId, depotId }
- */
 router.post("/return-bus", (req, res) => {
   const { busId, depotId } = req.body;
-  
   if (!busId || !depotId) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: busId, depotId"
-    });
+    return res.status(400).json({ success: false, message: "Missing required fields: busId, depotId" });
   }
-  
-  const result = fleetController.returnBusToDepot(busId, depotId);
-  res.json(result);
+  res.json(fleetController.returnBusToDepot(busId, depotId));
 });
 
-/**
- * POST /change-frequency
- * Change route frequency
- * Body: { routeId, frequency }
- */
 router.post("/change-frequency", (req, res) => {
   const { routeId, frequency } = req.body;
-  
-  if (!routeId || !frequency) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: routeId, frequency"
-    });
+  if (!routeId || frequency === undefined) {
+    return res.status(400).json({ success: false, message: "Missing required fields: routeId, frequency" });
   }
-  
-  const result = fleetController.changeRouteFrequency(routeId, frequency);
-  res.json(result);
+  res.json(fleetController.changeRouteFrequency(routeId, frequency));
 });
 
-/**
- * POST /rebalance
- * Rebalance buses between routes
- * Body: { fromRouteId, toRouteId, count }
- */
 router.post("/rebalance", (req, res) => {
   const { fromRouteId, toRouteId, count } = req.body;
-  
   if (!fromRouteId || !toRouteId || !count) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: fromRouteId, toRouteId, count"
-    });
+    return res.status(400).json({ success: false, message: "Missing required fields: fromRouteId, toRouteId, count" });
   }
-  
-  const result = fleetController.rebalanceBuses(fromRouteId, toRouteId, count);
-  res.json(result);
+  res.json(fleetController.rebalanceBuses(fromRouteId, toRouteId, count));
 });
 
-/**
- * POST /acknowledge-alert
- * Acknowledge an alert
- * Body: { alertId }
- */
+router.post("/emergency-dispatch", (req, res) => {
+  const { routeId, count } = req.body;
+  if (!routeId || !count) {
+    return res.status(400).json({ success: false, message: "Missing required fields: routeId, count" });
+  }
+  res.json(fleetController.emergencyDispatch(routeId, count));
+});
+
 router.post("/acknowledge-alert", (req, res) => {
   const { alertId } = req.body;
-  
   if (!alertId) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required field: alertId"
-    });
+    return res.status(400).json({ success: false, message: "Missing required field: alertId" });
   }
-  
   acknowledgeAlert(alertId);
   res.json({ success: true, message: "Alert acknowledged" });
 });
 
-/**
- * POST /emergency-dispatch
- * Emergency bus deployment
- * Body: { routeId, count }
- */
-router.post("/emergency-dispatch", (req, res) => {
-  const { routeId, count } = req.body;
-  
-  if (!routeId || !count) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: routeId, count"
-    });
-  }
-  
-  const result = fleetController.emergencyDispatch(routeId, count);
-  res.json(result);
+router.post("/acknowledge-all-alerts", (req, res) => {
+  const active = getActiveAlerts();
+  active.forEach(a => acknowledgeAlert(a.id));
+  res.json({ success: true, message: `${active.length} alerts acknowledged` });
 });
 
 // =============================================================================

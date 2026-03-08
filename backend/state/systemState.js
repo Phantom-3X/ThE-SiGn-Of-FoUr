@@ -60,11 +60,12 @@ const systemState = {
   
   // System metrics (calculated by metricsController)
   metrics: {
-    average_wait_time: 8,
-    fleet_utilization: 70,
+    fleet_utilization: 0,
     passenger_throughput: 0,
+    average_wait_time: 0,
     system_efficiency: 0,
-    demand_coverage: 0,
+    demand_fulfillment: 0,
+    route_balance: 0,
     active_buses: buses.filter(b => b.status === "active").length,
     total_buses: buses.length,
     active_alerts: 0,
