@@ -2,7 +2,8 @@
  * metroSimulator.js
  * 
  * Simulates metro system status changes and disruptions.
- * Metro status influences bus demand in nearby zones.
+ * Events persist for a realistic duration instead of flickering every tick.
+ * Metro status influences bus demand in nearby zones via demandSimulator.
  */
 
 const systemState = require("../state/systemState");
@@ -11,29 +12,53 @@ const { METRO_STATUS } = require("../config/constants");
 const { randomInt, randomChance, weightedRandom } = require("../utils/randomGenerator");
 const { isRushHour, isNightTime } = require("../utils/timeUtils");
 
-// Base passenger flow values
-const BASE_FLOW = 12000;
-const RUSH_HOUR_FLOW = 18000;
-const NIGHT_FLOW = 4000;
+// Passenger flow ranges by time of day
+const FLOW = {
+  rush:  { min: 14000, max: 20000 },
+  day:   { min: 8000,  max: 13000 },
+  night: { min: 2000,  max: 5000 }
+};
+
+// Event persistence: how many ticks the current status should last
+// This prevents flickering between states every 10 seconds
+let eventTicksRemaining = 0;
 
 /**
- * Determine if a random metro event should occur
+ * Determine if a new metro event should trigger.
+ * Only trigger when previous event has expired.
  */
 function shouldTriggerEvent() {
-  // 15% chance of status change per interval
-  return randomChance(0.15);
+  if (eventTicksRemaining > 0) return false;
+  // 12% chance per tick when idle (roughly once every ~80 seconds)
+  return randomChance(0.12);
 }
 
 /**
- * Generate a random metro status using weighted selection
+ * Generate a random metro status using weighted selection.
+ * Rush hour has higher chance of crowding.
  */
 function generateRandomStatus() {
+  const rush = isRushHour();
   const items = [
-    { item: METRO_STATUS.NORMAL, weight: 70 },
-    { item: METRO_STATUS.CROWDED, weight: 20 },
-    { item: METRO_STATUS.DELAYED, weight: 10 }
+    { item: METRO_STATUS.NORMAL,  weight: rush ? 50 : 70 },
+    { item: METRO_STATUS.CROWDED, weight: rush ? 35 : 20 },
+    { item: METRO_STATUS.DELAYED, weight: rush ? 15 : 10 }
   ];
   return weightedRandom(items);
+}
+
+/**
+ * Set how long the new status should persist (in ticks).
+ * Delayed events last longer than crowded.
+ */
+function setEventDuration(status) {
+  if (status === "delayed") {
+    eventTicksRemaining = randomInt(4, 8); // 40-80 seconds
+  } else if (status === "crowded") {
+    eventTicksRemaining = randomInt(3, 6); // 30-60 seconds
+  } else {
+    eventTicksRemaining = randomInt(5, 12); // normal period: 50-120 seconds
+  }
 }
 
 /**
@@ -41,14 +66,13 @@ function generateRandomStatus() {
  */
 function updateDelayMinutes() {
   const metro = systemState.metro;
-  
+
   if (metro.status === "delayed") {
-    // Set random delay between 5 and 20 minutes
     if (metro.delay_minutes === 0) {
       metro.delay_minutes = randomInt(5, 20);
     }
   } else {
-    // Gradually reduce delay when not delayed
+    // Gradually reduce delay when not in delayed status
     if (metro.delay_minutes > 0) {
       metro.delay_minutes = Math.max(0, metro.delay_minutes - randomInt(1, 3));
     }
@@ -60,45 +84,51 @@ function updateDelayMinutes() {
  */
 function updatePassengerFlow() {
   const metro = systemState.metro;
-  
-  // Determine base flow by time of day
-  let flow;
+
+  // Determine base flow range by time of day
+  let range;
   if (isRushHour()) {
-    flow = RUSH_HOUR_FLOW;
+    range = FLOW.rush;
   } else if (isNightTime()) {
-    flow = NIGHT_FLOW;
+    range = FLOW.night;
   } else {
-    flow = BASE_FLOW;
+    range = FLOW.day;
   }
-  
-  // Reduce flow during delays
+
+  let flow = randomInt(range.min, range.max);
+
+  // Status modifiers
   if (metro.status === "delayed") {
-    flow *= 0.6;
+    flow = Math.round(flow * 0.6); // fewer trains → less flow
   } else if (metro.status === "crowded") {
-    flow *= 1.15;
+    flow = Math.round(flow * 1.15);
   }
-  
-  // Apply small random variation (±10%)
-  flow *= (0.9 + Math.random() * 0.2);
-  
-  metro.passenger_flow = Math.round(flow);
+
+  metro.passenger_flow = flow;
 }
 
 /**
  * Run metro simulation tick
  */
 function tickMetroUpdate() {
-  const metro = systemState.metro;
-  
-  // Check if status change should occur
-  if (shouldTriggerEvent()) {
-    metro.status = generateRandomStatus();
+  // Decrement event timer
+  if (eventTicksRemaining > 0) {
+    eventTicksRemaining--;
   }
-  
-  // Update delay minutes
+
+  // Check if a new event should trigger
+  if (shouldTriggerEvent()) {
+    const newStatus = generateRandomStatus();
+    systemState.metro.status = newStatus;
+    setEventDuration(newStatus);
+
+    // Reset delay for fresh delayed events
+    if (newStatus === "delayed") {
+      systemState.metro.delay_minutes = 0; // updateDelayMinutes will set it
+    }
+  }
+
   updateDelayMinutes();
-  
-  // Update passenger flow
   updatePassengerFlow();
 }
 
@@ -107,14 +137,15 @@ function tickMetroUpdate() {
  */
 function startMetroSimulation() {
   console.log("[MetroSimulator] Initializing metro simulation...");
-  
+
+  // Start with a normal period so the demo begins stable
+  eventTicksRemaining = randomInt(3, 6);
+
   setInterval(() => {
     tickMetroUpdate();
   }, METRO_UPDATE_INTERVAL);
-  
+
   console.log(`[MetroSimulator] Running every ${METRO_UPDATE_INTERVAL}ms`);
 }
-
-module.exports = startMetroSimulation;
 
 module.exports = startMetroSimulation;
