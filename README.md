@@ -22,17 +22,18 @@ https://fleet-orchestrator-backend-f4r0.onrender.com
 
 ---
 
-# 🎥 Demo
+# 📸 Screenshots
 
-Add demo GIF or screenshots here.
+Add screenshots in `/docs`.
 
 Example:
 
 ```
-docs/demo.gif
-docs/dashboard.png
-docs/map-view.png
-docs/control-center.png
+docs/
+ ├ dashboard.png
+ ├ live-map.png
+ ├ control-center.png
+ ├ analytics.png
 ```
 
 ---
@@ -373,21 +374,6 @@ lucide-react
 
 ---
 
-# 📸 Screenshots
-
-Add screenshots in `/docs`.
-
-Example:
-
-```
-docs/
- ├ dashboard.png
- ├ live-map.png
- ├ control-center.png
- ├ analytics.png
-```
-
----
 
 # 🚀 Future Improvements
 
