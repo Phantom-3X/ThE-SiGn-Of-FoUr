@@ -17,28 +17,89 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom icons for different statuses
-const createBusIcon = (status, loadPercent) => {
-    let color = '#22c55e'; // Green
-    if (status === 'crowded' || loadPercent > 85) color = '#ef4444'; // Red
-    else if (loadPercent > 60) color = '#f59e0b'; // Orange
-    else if (status === 'underutilized') color = '#3b82f6'; // Blue
+/**
+ * Calculate bearing in degrees between two GPS points
+ * 0 = North, 90 = East, 180 = South, 270 = West
+ */
+const calculateBearing = (lat1, lng1, lat2, lng2) => {
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const rlat1 = toRad(lat1);
+  const rlat2 = toRad(lat2);
+  const y = Math.sin(dLng) * Math.cos(rlat2);
+  const x = Math.cos(rlat1) * Math.sin(rlat2) - Math.sin(rlat1) * Math.cos(rlat2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+};
 
-    const html = `
-        <div style="
-            background-color: ${color};
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 0 10px ${color};
-        "></div>
-    `;
-    return L.divIcon({
-        html,
-        className: 'custom-bus-icon',
-        iconSize: [12, 12],
-        iconAnchor: [6, 6]
-    });
+const createBusIcon = (status, loadPercent, bearing = 90, busId = '') => {
+  // Color based on status
+  let bgColor = '#10b981';      // green — active
+  let borderColor = '#059669';
+  if (status === 'crowded' || loadPercent > 85) {
+    bgColor = '#ef4444';
+    borderColor = '#dc2626';
+  } else if (loadPercent > 60) {
+    bgColor = '#f59e0b';
+    borderColor = '#d97706';
+  } else if (status === 'underutilized') {
+    bgColor = '#3b82f6';
+    borderColor = '#2563eb';
+  }
+
+  // Extract route number from bus data — passed as routeId
+  const label = busId || '';
+
+  const html = `
+    <div style="
+      transform: rotate(${bearing - 90}deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));
+    ">
+      <svg width="48" height="28" viewBox="0 0 48 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Bus body top view -->
+        <rect x="2" y="2" width="44" height="24" rx="4" fill="${bgColor}" stroke="${borderColor}" stroke-width="1.5"/>
+        
+        <!-- Windshield front -->
+        <rect x="36" y="5" width="7" height="8" rx="2" fill="white" opacity="0.5"/>
+        
+        <!-- Windshield rear -->
+        <rect x="5" y="5" width="5" height="8" rx="2" fill="white" opacity="0.3"/>
+        
+        <!-- Center stripe -->
+        <rect x="2" y="13" width="44" height="2" fill="white" opacity="0.2"/>
+        
+        <!-- Left wheels -->
+        <rect x="3" y="2" width="5" height="4" rx="1" fill="${borderColor}"/>
+        <rect x="3" y="22" width="5" height="4" rx="1" fill="${borderColor}"/>
+        
+        <!-- Right wheels -->
+        <rect x="40" y="2" width="5" height="4" rx="1" fill="${borderColor}"/>
+        <rect x="40" y="22" width="5" height="4" rx="1" fill="${borderColor}"/>
+
+        <!-- Route number text -->
+        <text 
+          x="24" 
+          y="17" 
+          text-anchor="middle" 
+          font-family="system-ui, sans-serif" 
+          font-size="9" 
+          font-weight="900" 
+          fill="white"
+          letter-spacing="0.5"
+        >${label}</text>
+      </svg>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'custom-bus-icon',
+    iconSize: [48, 28],
+    iconAnchor: [24, 14]
+  });
 };
 
 const depotIcon = L.divIcon({
@@ -111,20 +172,26 @@ const LiveMap = ({ buses = [], depots = [], routes = [], demandZones = [] }) => 
             ))}
 
             {/* Buses */}
-            {buses.map(bus => {
+            {buses.map((bus, idx) => {
                 const loadPercent = (bus.current_load / bus.capacity) * 100;
+                // Calculate bearing using next bus in same route as reference
+                // or use a default eastward bearing
+                const nextBus = buses.find(b => b.route_id === bus.route_id && b.bus_id !== bus.bus_id);
+                const bearing = nextBus
+                    ? calculateBearing(bus.lat, bus.lng, nextBus.lat, nextBus.lng)
+                    : 90;
                 return (
                     <Marker 
                         key={bus.bus_id} 
                         position={[bus.lat, bus.lng]} 
-                        icon={createBusIcon(bus.status, loadPercent)}
+                        icon={createBusIcon(bus.status, loadPercent, bearing, bus.route_id)}
                     >
                         <Popup>
                             <div className="text-slate-900">
                                 <strong>Bus: {bus.bus_id}</strong><br/>
                                 Route: {bus.route_id}<br/>
-                                Load: {bus.current_load} / {bus.capacity} (${loadPercent.toFixed(0)}%)<br/>
-                                Status: ${bus.status}
+                                Load: {bus.current_load} / {bus.capacity} ({loadPercent.toFixed(0)}%)<br/>
+                                Status: {bus.status}
                             </div>
                         </Popup>
                     </Marker>

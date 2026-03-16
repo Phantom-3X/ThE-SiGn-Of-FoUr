@@ -15,7 +15,11 @@ const RECOMMENDATION_TYPES = {
   INCREASE_FREQUENCY: "increase_frequency",
   DECREASE_FREQUENCY: "decrease_frequency",
   REBALANCE_FLEET: "rebalance_fleet",
-  METRO_SUPPORT: "metro_support"
+  METRO_SUPPORT: "metro_support",
+  EXTEND_ROUTE: "extend_route",
+  ADD_STOP: "add_stop",
+  EXPRESS_VARIANT: "express_variant",
+  REROUTE: "reroute"
 };
 
 const PRIORITY = {
@@ -181,6 +185,128 @@ function generateMetroSupportRecommendations() {
   return recs;
 }
 
+// ── Rule 5: AI Route Suggestions ─────────────────────────────────────────────
+
+/**
+ * Calculate distance between two lat/lng points in km (Haversine)
+ */
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/**
+ * Check if a demand zone is covered by any existing route stop
+ * Coverage radius: 1.5km
+ */
+function isZoneCovered(zone) {
+  const COVERAGE_RADIUS_KM = 1.5;
+  for (const route of systemState.routes) {
+    for (const stop of route.stops) {
+      if (distanceKm(zone.lat, zone.lng, stop.lat, stop.lng) <= COVERAGE_RADIUS_KM) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Find nearest route to a zone
+ */
+function nearestRoute(zone) {
+  let minDist = Infinity;
+  let nearest = null;
+  for (const route of systemState.routes) {
+    for (const stop of route.stops) {
+      const d = distanceKm(zone.lat, zone.lng, stop.lat, stop.lng);
+      if (d < minDist) {
+        minDist = d;
+        nearest = { route, distanceKm: d };
+      }
+    }
+  }
+  return nearest;
+}
+
+function generateRouteSuggestions() {
+  const recs = [];
+
+  // ── Suggestion 1: Extend route to uncovered high-demand zones
+  systemState.demandZones.forEach(zone => {
+    if (zone.current_demand < 70) return; // only high-demand zones
+    if (isZoneCovered(zone)) return;      // already covered
+
+    const nearest = nearestRoute(zone);
+    if (!nearest) return;
+
+    recs.push(createRecommendation(
+      RECOMMENDATION_TYPES.EXTEND_ROUTE,
+      nearest.route.route_id,
+      PRIORITY.HIGH,
+      `Extend ${nearest.route.name} by ~${nearest.distanceKm.toFixed(1)}km to cover ${zone.name} (demand: ${zone.current_demand})`
+    ));
+  });
+
+  // ── Suggestion 2: Add stop for surging zones near existing routes
+  systemState.demandZones.forEach(zone => {
+    if (!zone.predicted_demand || zone.predicted_demand <= zone.current_demand * 1.2) return;
+
+    const nearest = nearestRoute(zone);
+    if (!nearest || nearest.distanceKm > 1.5) return; // must be close
+
+    recs.push(createRecommendation(
+      RECOMMENDATION_TYPES.ADD_STOP,
+      nearest.route.route_id,
+      PRIORITY.MEDIUM,
+      `Add stop at ${zone.name} on ${nearest.route.name} — predicted surge +${Math.round(((zone.predicted_demand - zone.current_demand) / zone.current_demand) * 100)}% during peak hours`
+    ));
+  });
+
+  // ── Suggestion 3: Express variant for consistently overcrowded routes
+  const routeStats = getRouteLoadStats();
+  Object.entries(routeStats).forEach(([routeId, stats]) => {
+    if (stats.loadFactor < 0.85) return;
+    const route = systemState.routes.find(r => r.route_id === routeId);
+    if (!route || route.stops.length < 5) return;
+
+    const skipCount = Math.floor(route.stops.length * 0.3);
+    recs.push(createRecommendation(
+      RECOMMENDATION_TYPES.EXPRESS_VARIANT,
+      routeId,
+      PRIORITY.HIGH,
+      `Create express variant of ${route.name} skipping ${skipCount} intermediate stops — reduces travel time by ~${skipCount * 3} min during rush hour`
+    ));
+  });
+
+  // ── Suggestion 4: Reroute when metro is delayed
+  const metro = systemState.metro;
+  if (metro.status === 'delayed' && metro.delay_minutes >= 10) {
+    systemState.routes.forEach(route => {
+      const nearMetro = route.stops.some(stop =>
+        metro.stations && metro.stations.some(st =>
+          distanceKm(stop.lat, stop.lng, st.lat, st.lng) < 1.0
+        )
+      );
+      if (nearMetro) {
+        recs.push(createRecommendation(
+          RECOMMENDATION_TYPES.REROUTE,
+          route.route_id,
+          PRIORITY.URGENT,
+          `Reroute ${route.name} via metro interchange zones — Metro Line 1 delayed ${metro.delay_minutes} min, expect +${Math.round(metro.delay_minutes * 0.4)} pax overflow`
+        ));
+      }
+    });
+  }
+
+  return recs.slice(0, 3); // max 3 route suggestions at a time
+}
+
 // ── Generate all & store ─────────────────────────────────────────────────────
 
 function generateAllRecommendations() {
@@ -188,7 +314,8 @@ function generateAllRecommendations() {
     ...generateDeploymentRecommendations(),
     ...generateFrequencyRecommendations(),
     ...generateRebalancingRecommendations(),
-    ...generateMetroSupportRecommendations()
+    ...generateMetroSupportRecommendations(),
+    ...generateRouteSuggestions()
   ];
 
   // Sort by priority descending (urgent first)
@@ -198,7 +325,7 @@ function generateAllRecommendations() {
   return all;
 }
 
-function getTopRecommendations(count = 5) {
+function getTopRecommendations(count = 8) {
   return generateAllRecommendations().slice(0, count);
 }
 

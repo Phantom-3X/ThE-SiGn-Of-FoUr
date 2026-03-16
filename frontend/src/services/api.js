@@ -26,8 +26,11 @@ export const deployBus = (depotId, routeId) =>
 export const returnBus = (busId, depotId) => 
   api.post('/return-bus', { busId, depotId });
 
-export const changeFrequency = (routeId, frequency) => 
-  api.post('/change-frequency', { routeId, frequency });
+export const rebalanceBuses = (fromRouteId, toRouteId, count) =>
+  axios.post(`${API_BASE}/rebalance`, { fromRouteId, toRouteId, count });
+
+export const changeFrequency = (routeId, frequency) =>
+  axios.post(`${API_BASE}/change-frequency`, { routeId, frequency });
 
 export const acknowledgeAlert = (alertId) => 
   api.post('/acknowledge-alert', { alertId });
@@ -35,7 +38,10 @@ export const acknowledgeAlert = (alertId) =>
 export const acknowledgeAllAlerts = () => 
   api.post('/acknowledge-all-alerts');
 
-export const emergencyDispatch = (routeId, count) => 
-  api.post('/emergency-dispatch', { routeId, count });
+export const getBusDetails = (busId) =>
+  axios.get(`${API_BASE}/buses/${busId}`);
+
+export const emergencyDispatch = (routeId, count) =>
+  axios.post(`${API_BASE}/emergency-dispatch`, { routeId, count });
 
 export default api;

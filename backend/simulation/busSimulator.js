@@ -125,16 +125,16 @@ function updateBusStatus(bus) {
  */
 function simulateBoarding(bus) {
   // Passengers leaving: random 0-10
-  const leaving = Math.min(randomInt(0, 10), bus.current_load);
+  const leaving = Math.min(randomInt(8, 20), bus.current_load);
   bus.current_load -= leaving;
 
   // Get demand near this bus stop
   const demand = getNearbyDemand(bus.lat, bus.lng);
 
   // Scale boarding by demand: low demand (20) → 2-8, high demand (100) → 8-22
-  const demandFactor = Math.max(0.3, Math.min(demand / 80, 1.5));
-  const minBoard = Math.round(3 * demandFactor);
-  const maxBoard = Math.round(15 * demandFactor);
+  const demandFactor = Math.max(0.2, Math.min(demand / 100, 1.0));
+  const minBoard = Math.round(2 * demandFactor);
+  const maxBoard = Math.round(8 * demandFactor);
 
   const availableSpace = bus.capacity - bus.current_load;
   const boarding = Math.min(randomInt(minBoard, maxBoard), availableSpace);
