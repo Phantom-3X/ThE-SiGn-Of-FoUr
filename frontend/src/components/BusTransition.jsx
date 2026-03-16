@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 const BusTransition = ({ children, locationKey }) => {
   const [showBus, setShowBus] = useState(true);
+  const isDarkMode = document.documentElement.classList.contains('dark');
 
   useEffect(() => {
     setShowBus(true);
@@ -28,7 +29,7 @@ const BusTransition = ({ children, locationKey }) => {
               position: 'fixed',
               inset: 0,
               zIndex: 9998,
-              background: '#f8fafc',
+              background: isDarkMode ? '#0b1220' : '#f8fafc',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -43,7 +44,7 @@ const BusTransition = ({ children, locationKey }) => {
               transition={{ duration: 1.8, ease: [0.25, 0.46, 0.45, 0.94] }}
             >
               <svg width="130" height="52" viewBox="0 0 200 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <ellipse cx="100" cy="74" rx="80" ry="4" fill="rgba(0,0,0,0.06)" />
+                <ellipse cx="100" cy="74" rx="80" ry="4" fill={isDarkMode ? 'rgba(148,163,184,0.28)' : 'rgba(0,0,0,0.06)'} />
                 <rect x="10" y="14" width="170" height="48" rx="10" fill="#10b981" />
                 <rect x="10" y="38" width="170" height="7" fill="#ffffff" opacity="0.85" />
                 <rect x="30" y="8" width="120" height="8" rx="4" fill="#059669" />
@@ -71,7 +72,7 @@ const BusTransition = ({ children, locationKey }) => {
                 fontWeight: 800,
                 letterSpacing: '0.2em',
                 textTransform: 'uppercase',
-                color: '#10b981',
+                color: isDarkMode ? '#34d399' : '#10b981',
               }}
             >
               Loading...

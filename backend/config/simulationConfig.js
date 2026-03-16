@@ -10,6 +10,7 @@
 // =============================================================================
 
 const BUS_UPDATE_INTERVAL = 3000;      // How often bus positions update
+const AUTO_RIKSHAW_UPDATE_INTERVAL = 2500; // How often auto-rikshaw positions update
 const DEMAND_UPDATE_INTERVAL = 5000;   // How often demand values change
 const METRO_UPDATE_INTERVAL = 10000;   // How often metro status changes
 const EVENT_UPDATE_INTERVAL = 60000;   // How often city events are evaluated
@@ -66,6 +67,7 @@ const VARIABILITY = {
 module.exports = {
   // Intervals
   BUS_UPDATE_INTERVAL,
+  AUTO_RIKSHAW_UPDATE_INTERVAL,
   DEMAND_UPDATE_INTERVAL,
   METRO_UPDATE_INTERVAL,
   PREDICTION_INTERVAL,

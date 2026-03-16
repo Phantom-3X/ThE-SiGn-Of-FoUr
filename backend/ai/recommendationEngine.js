@@ -71,14 +71,29 @@ function getRouteLoadStats() {
 function generateDeploymentRecommendations() {
   const recs = [];
   const routeStats = getRouteLoadStats();
+  const weights = systemState.optimization_weights || { wait_time: 33, fuel_efficiency: 33, empty_km: 34 };
 
   Object.entries(routeStats).forEach(([routeId, stats]) => {
-    if (stats.loadFactor > OVERCROWDED_THRESHOLD) {
+    // If fuel conservation is highest priority, raise the overcrowding threshold slightly
+    const adjustedThreshold = weights.fuel_efficiency > 50 ? OVERCROWDED_THRESHOLD + 0.05 : OVERCROWDED_THRESHOLD;
+    
+    if (stats.loadFactor > adjustedThreshold) {
       const route = systemState.routes.find(r => r.route_id === routeId);
+      let priority = stats.loadFactor > 0.95 ? PRIORITY.URGENT : PRIORITY.HIGH;
+      
+      // Bump priority if wait time is the main goal
+      if (weights.wait_time > 60 && priority === PRIORITY.HIGH) {
+        priority = PRIORITY.URGENT;
+      }
+      // Lower priority if fuel saving is main goal and it's not critically full
+      else if (weights.fuel_efficiency > 60 && priority === PRIORITY.HIGH) {
+        priority = PRIORITY.MEDIUM;
+      }
+
       recs.push(createRecommendation(
         RECOMMENDATION_TYPES.DEPLOY_BUS,
         routeId,
-        stats.loadFactor > 0.95 ? PRIORITY.URGENT : PRIORITY.HIGH,
+        priority,
         `High passenger load detected on ${route?.name || routeId} (${Math.round(stats.loadFactor * 100)}%)`
       ));
     }
@@ -105,26 +120,39 @@ function generateDeploymentRecommendations() {
 function generateFrequencyRecommendations() {
   const recs = [];
   const routeStats = getRouteLoadStats();
+  const weights = systemState.optimization_weights || { wait_time: 33, fuel_efficiency: 33, empty_km: 34 };
 
   Object.entries(routeStats).forEach(([routeId, stats]) => {
     const route = systemState.routes.find(r => r.route_id === routeId);
     if (!route) return;
 
-    if (stats.loadFactor > OVERCROWDED_THRESHOLD && route.frequency > 5) {
-      recs.push(createRecommendation(
-        RECOMMENDATION_TYPES.INCREASE_FREQUENCY,
-        routeId,
-        PRIORITY.HIGH,
-        `Reduce interval on ${route.name} from ${route.frequency} to ${route.frequency - 2} min`
-      ));
+    // Wait Time Priority -> Suggest frequency increases sooner
+    const increaseThreshold = weights.wait_time > 50 ? OVERCROWDED_THRESHOLD - 0.1 : OVERCROWDED_THRESHOLD;
+    
+    if (stats.loadFactor > increaseThreshold && route.frequency > 5) {
+      // Don't suggest frequency increase if fuel conservation is maxed
+      if (weights.fuel_efficiency < 80) {
+        recs.push(createRecommendation(
+          RECOMMENDATION_TYPES.INCREASE_FREQUENCY,
+          routeId,
+          PRIORITY.HIGH,
+          `Reduce interval on ${route.name} from ${route.frequency} to ${Math.max(5, route.frequency - 2)} min`
+        ));
+      }
     }
 
-    if (stats.loadFactor < UNDERUTILIZED_THRESHOLD && route.frequency < 15) {
+    // Fuel/Empty Km Priority -> Suggest frequency decreases sooner
+    const decreaseThreshold = (weights.fuel_efficiency > 50 || weights.empty_km > 50) ? UNDERUTILIZED_THRESHOLD + 0.1 : UNDERUTILIZED_THRESHOLD;
+
+    if (stats.loadFactor < decreaseThreshold && route.frequency < 15) {
+      // Boost priority if we are actively trying to save empty km or fuel
+      const decPriority = (weights.fuel_efficiency > 60 || weights.empty_km > 60) ? PRIORITY.HIGH : PRIORITY.LOW;
+      
       recs.push(createRecommendation(
         RECOMMENDATION_TYPES.DECREASE_FREQUENCY,
         routeId,
-        PRIORITY.LOW,
-        `Increase interval on ${route.name} from ${route.frequency} to ${route.frequency + 3} min`
+        decPriority,
+        `Increase interval on ${route.name} from ${route.frequency} to ${Math.min(30, route.frequency + 3)} min to save fuel/empty km`
       ));
     }
   });

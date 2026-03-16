@@ -45,7 +45,9 @@ const ALERT_TYPES = {
   UNDERUTILIZED_ROUTE: "underutilized_route",
   DEMAND_SPIKE: "demand_spike",
   METRO_DISRUPTION: "metro_disruption",
-  FLEET_IMBALANCE: "fleet_imbalance"
+  FLEET_IMBALANCE: "fleet_imbalance",
+  REROUTING: "rerouting",
+  ROUTE_CHANGE: "route_change"
 };
 
 // =============================================================================
@@ -53,6 +55,7 @@ const ALERT_TYPES = {
 // =============================================================================
 
 const SEVERITY = {
+  INFO: "info",
   LOW: "low",
   MEDIUM: "medium",
   HIGH: "high",

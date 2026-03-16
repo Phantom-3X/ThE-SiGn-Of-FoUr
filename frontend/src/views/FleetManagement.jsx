@@ -124,7 +124,13 @@ const FleetManagement = () => {
                     <td className="px-8 py-5">
                       <div className="flex flex-col">
                         <span className="text-sm font-black text-accent">{bus.route_id}</span>
+                        {bus.auto_reroute ? (
+                          <span className="text-[9px] text-violet-600 uppercase font-black tracking-widest mt-0.5">
+                            Support from {bus.auto_reroute.original_route_id}
+                          </span>
+                        ) : (
                         <span className="text-[10px] text-text-dim uppercase font-black tracking-widest mt-0.5">Pune Integrated Network</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-8 py-5">
@@ -308,6 +314,13 @@ const FleetManagement = () => {
                         <p className="text-[10px] font-bold text-text-dim uppercase tracking-widest">Route ID: {busDetail.route_id}</p>
                       </div>
                     </div>
+                    {busDetail.auto_reroute && (
+                      <div className="mt-1 p-4 rounded-xl bg-violet-50 border border-violet-200 flex flex-col gap-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-violet-700">Temporary Support Assignment</span>
+                        <span className="text-xs font-bold text-violet-900">Supporting crowded route {busDetail.route_id}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-violet-600">Original route: {busDetail.auto_reroute.original_route_id}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Position */}

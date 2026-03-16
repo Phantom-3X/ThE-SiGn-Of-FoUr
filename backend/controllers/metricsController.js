@@ -13,6 +13,26 @@ const { METRICS_UPDATE_INTERVAL } = require("../config/simulationConfig");
 // =============================================================================
 
 /**
+ * Fuel Consumption per metrics tick
+ * Base consumption for an active bus is ~0.4 liters per 10km. 
+ * Heavy load adds up to 30% more.
+ * We calculate per 10-second tick here to accumulate smoothly.
+ */
+function calculateFuelConsumptionTick() {
+  let tickFuel = 0;
+  systemState.buses.forEach(bus => {
+    if (bus.status === "idle" || bus.status === "maintenance") return;
+    
+    // Roughly 0.001 liters per 10 second run
+    const baseConsumption = 0.001; 
+    const loadFactor = bus.current_load / bus.capacity;
+    
+    tickFuel += baseConsumption * (1 + (loadFactor * 0.3));
+  });
+  return tickFuel;
+}
+
+/**
  * Fleet Utilization (%)
  * total passenger load across all active buses ÷ total bus capacity
  */
@@ -130,7 +150,30 @@ function calculateSystemEfficiency() {
 function updateMetrics() {
   const activeBuses = systemState.buses.filter(
     b => b.status !== "idle" && b.status !== "maintenance"
-  ).length;
+  );
+
+  // Group buses by route to determine route-level traffic
+  const routeLoads = {};
+  activeBuses.forEach(bus => {
+    if (!routeLoads[bus.route_id]) {
+        routeLoads[bus.route_id] = { load: 0, cap: 0 };
+    }
+    routeLoads[bus.route_id].load += bus.current_load;
+    routeLoads[bus.route_id].cap += bus.capacity;
+  });
+
+  // Inject real-time traffic status directly into route state
+  systemState.routes.forEach(route => {
+      const stats = routeLoads[route.route_id];
+      if (!stats || stats.cap === 0) {
+          route.traffic_status = 'low';
+      } else {
+          const percent = stats.load / stats.cap;
+          if (percent > 0.85) route.traffic_status = 'heavy';
+          else if (percent > 0.60) route.traffic_status = 'moderate';
+          else route.traffic_status = 'low';
+      }
+  });
 
   systemState.metrics = {
     fleet_utilization: calculateFleetUtilization(),
@@ -139,9 +182,12 @@ function updateMetrics() {
     system_efficiency: calculateSystemEfficiency(),
     demand_fulfillment: calculateDemandFulfillment(),
     route_balance: calculateRouteBalance(),
-    active_buses: activeBuses,
+    active_buses: activeBuses.length,
     total_buses: systemState.buses.length,
     active_alerts: systemState.alerts.filter(a => !a.acknowledged).length,
+    total_distance_km: systemState.metrics.total_distance_km,
+    empty_distance_km: systemState.metrics.empty_distance_km,
+    total_fuel_consumed: systemState.metrics.total_fuel_consumed,
     last_updated: new Date().toISOString()
   };
 

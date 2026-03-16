@@ -34,6 +34,8 @@ export const FleetProvider = ({ children, interval = 3000 }) => {
     ...data,
     routes: data?.routes || [],
     buses: data?.buses || [],
+    autoRikshawRoutes: data?.autoRikshawRoutes || [],
+    autoRikshaws: data?.autoRikshaws || [],
     depots: data?.depots || [],
     demandZones: data?.demandZones || [],
     metro: data?.metro || {},
@@ -41,6 +43,7 @@ export const FleetProvider = ({ children, interval = 3000 }) => {
     metrics: data?.metrics || {},
     predictions: data?.predictions || {},
     simulation: data?.simulation || {},
+    optimization_weights: data?.optimization_weights || { wait_time: 33, fuel_efficiency: 33, empty_km: 34 },
     loading,
     error,
     refresh: fetchData

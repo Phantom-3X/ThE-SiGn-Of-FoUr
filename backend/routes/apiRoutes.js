@@ -21,6 +21,7 @@ const metricsController = require("../controllers/metricsController");
 const { getActiveAlerts, acknowledgeAlert } = require("../ai/alertEngine");
 const { getTopRecommendations } = require("../ai/recommendationEngine");
 const { getPredictionSummary } = require("../ai/predictionEngine");
+const { triggerManualEvent } = require("../simulation/eventSimulator");
 
 // =============================================================================
 // DATA RETRIEVAL ENDPOINTS (GET)
@@ -50,6 +51,14 @@ router.get("/buses/:busId", (req, res) => {
   const detail = fleetController.getBusDetails(req.params.busId);
   if (!detail) return res.status(404).json({ error: `Bus ${req.params.busId} not found` });
   res.json(detail);
+});
+
+router.get("/rikshaw-routes", (req, res) => {
+  res.json(systemState.autoRikshawRoutes);
+});
+
+router.get("/rikshaws", (req, res) => {
+  res.json(systemState.autoRikshaws);
 });
 
 router.get("/depots", (req, res) => {
@@ -115,6 +124,8 @@ router.get("/dashboard", (req, res) => {
   res.json({
     buses: systemState.buses,
     routes: systemState.routes,
+    autoRikshawRoutes: systemState.autoRikshawRoutes,
+    autoRikshaws: systemState.autoRikshaws,
     depots: systemState.depots,
     demandZones: systemState.demandZones,
     metro: systemState.metro,
@@ -122,6 +133,7 @@ router.get("/dashboard", (req, res) => {
     metrics: metricsController.getMetrics(),
     metricsFormatted: metricsController.getDashboardMetrics(),
     recommendations: getTopRecommendations(5),
+    optimization_weights: systemState.optimization_weights,
     events: systemState.events.filter(e => e.active),
     routeStats: metricsController.getRouteStats(),
     zoneStats: metricsController.getZoneStats(),
@@ -176,6 +188,22 @@ router.post("/emergency-dispatch", (req, res) => {
   res.json(fleetController.emergencyDispatch(routeId, count));
 });
 
+router.post("/reroute-bus", (req, res) => {
+  const { busId, routeId } = req.body;
+  if (!busId || !routeId) {
+    return res.status(400).json({ success: false, message: "Missing required fields: busId, routeId" });
+  }
+  res.json(fleetController.rerouteBus(busId, routeId));
+});
+
+router.post("/trigger-event", (req, res) => {
+  const { zoneId, type, durationMinutes } = req.body;
+  if (!zoneId) {
+    return res.status(400).json({ success: false, message: "Missing required field: zoneId" });
+  }
+  res.json(triggerManualEvent(zoneId, type, durationMinutes));
+});
+
 router.post("/acknowledge-alert", (req, res) => {
   const { alertId } = req.body;
   if (!alertId) {
@@ -189,6 +217,26 @@ router.post("/acknowledge-all-alerts", (req, res) => {
   const active = getActiveAlerts();
   active.forEach(a => acknowledgeAlert(a.id));
   res.json({ success: true, message: `${active.length} alerts acknowledged` });
+});
+
+router.post("/optimization-weights", (req, res) => {
+  const { wait_time, fuel_efficiency, empty_km } = req.body;
+  if (wait_time === undefined || fuel_efficiency === undefined || empty_km === undefined) {
+    return res.status(400).json({ success: false, message: "Missing required weights" });
+  }
+  res.json(fleetController.updateOptimizationWeights(wait_time, fuel_efficiency, empty_km));
+});
+
+router.post("/block-route", (req, res) => {
+  const { routeId } = req.body;
+  if (!routeId) return res.status(400).json({ success: false, message: "Missing required field: routeId" });
+  res.json(fleetController.blockRoute(routeId));
+});
+
+router.post("/unblock-route", (req, res) => {
+  const { routeId } = req.body;
+  if (!routeId) return res.status(400).json({ success: false, message: "Missing required field: routeId" });
+  res.json(fleetController.unblockRoute(routeId));
 });
 
 // =============================================================================

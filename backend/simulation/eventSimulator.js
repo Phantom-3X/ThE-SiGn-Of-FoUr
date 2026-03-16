@@ -111,6 +111,49 @@ function maybeGenerateEvent() {
   console.log(
     `[EventSimulator] New event: ${event.name} (${eventType.type}, ×${eventType.multiplier}, ~${Math.round(duration / 60000)} min)`
   );
+
+  return event;
+}
+
+function triggerManualEvent(zoneId, eventTypeName, durationMinutes = 10) {
+  const activeCount = systemState.events.filter(e => e.active).length;
+  if (activeCount >= MAX_ACTIVE_EVENTS) {
+    return { success: false, message: `Maximum active events reached (${MAX_ACTIVE_EVENTS})` };
+  }
+
+  const zone = systemState.demandZones.find(z => z.zone_id === zoneId);
+  if (!zone) {
+    return { success: false, message: `Zone ${zoneId} not found` };
+  }
+
+  const alreadyOccupied = systemState.events.some(e => e.active && e.zone_id === zone.zone_id);
+  if (alreadyOccupied) {
+    return { success: false, message: `An active event already exists in ${zone.name}` };
+  }
+
+  const eventType = EVENT_TYPES.find(e => e.type === eventTypeName) || EVENT_TYPES[0];
+
+  eventCounter++;
+  const now = Date.now();
+  const duration = Math.max(1, durationMinutes) * 60 * 1000;
+  const event = {
+    event_id: `EVT${String(eventCounter).padStart(3, "0")}`,
+    name: `${eventType.label} at ${zone.name}`,
+    zone_id: zone.zone_id,
+    type: eventType.type,
+    demand_multiplier: eventType.multiplier,
+    lat: zone.lat,
+    lng: zone.lng,
+    start_time: now,
+    end_time: now + duration,
+    active: true,
+    manual: true
+  };
+
+  systemState.events.push(event);
+  console.log(`[EventSimulator] Manual event triggered: ${event.name} (~${durationMinutes} min)`);
+
+  return { success: true, message: `${event.name} triggered successfully`, event };
 }
 
 // =============================================================================
@@ -132,4 +175,8 @@ function startEventSimulation() {
   );
 }
 
-module.exports = startEventSimulation;
+module.exports = {
+  startEventSimulation,
+  triggerManualEvent,
+  EVENT_TYPES
+};
