@@ -1,19 +1,20 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useFleet } from '../context/FleetContext';
 import { 
   TrainFront, 
-  Bus, 
   Timer, 
   ArrowRightLeft,
   Activity,
   ChevronRight,
   TrendingUp,
   MapPin,
-  Leaf
+  Leaf,
+  Gauge,
+  Sparkles
 } from 'lucide-react';
 
 const MultiModal = () => {
-  const { metro = {}, routeStats = [], buses = [] } = useFleet();
+  const { metro = {}, routeStats = [], autoRikshawRoutes = [], autoRikshaws = [], events = [] } = useFleet();
   
   // Try to derive hub connectivity from real routeStats if possible
   // For now, structure with real data mappings
@@ -44,6 +45,70 @@ const metroStatusBg = metro.status === 'delayed' ? 'border-danger/20 bg-danger/0
 
 const metroDotColor = metro.status === 'delayed' ? 'bg-danger' :
     metro.status === 'crowded' ? 'bg-warning' : 'bg-primary';
+
+  const activeEventIds = useMemo(
+    () => new Set(events.filter(event => event.active).map(event => event.event_id)),
+    [events]
+  );
+
+  const autoStandStats = useMemo(() => {
+    return autoRikshawRoutes.map(route => {
+      const routeRikshaws = autoRikshaws.filter(rikshaw => rikshaw.route_id === route.route_id);
+      const totalCapacity = routeRikshaws.reduce((sum, rikshaw) => sum + (rikshaw.capacity || 0), 0);
+      const availableSeats = routeRikshaws.reduce((sum, rikshaw) => sum + Math.max(0, (rikshaw.capacity || 0) - (rikshaw.current_load || 0)), 0);
+      const totalTrips = routeRikshaws.reduce((sum, rikshaw) => sum + (rikshaw.completed_trips || 0), 0);
+      const eventAssignments = routeRikshaws.filter(rikshaw => rikshaw.event_mission && activeEventIds.has(rikshaw.event_mission.event_id)).length;
+      const availabilityRatio = totalCapacity > 0 ? availableSeats / totalCapacity : 0;
+      const estimatedWait = routeRikshaws.length > 0
+        ? Math.max(1, Math.round((route.avg_trip_minutes || 12) / Math.max(2, routeRikshaws.length * 1.5)))
+        : route.avg_trip_minutes || 0;
+
+      let status = 'busy';
+      if (availabilityRatio >= 0.55) status = 'active';
+      else if (availabilityRatio >= 0.25) status = 'low';
+
+      return {
+        route_id: route.route_id,
+        name: `${route.name.split('↔')[0]?.trim() || route.name} Auto Stand`,
+        totalCapacity,
+        availableSeats,
+        availabilityRatio,
+        estimatedWait,
+        totalTrips,
+        eventAssignments,
+        status
+      };
+    });
+  }, [autoRikshawRoutes, autoRikshaws, activeEventIds]);
+
+  const autoSummary = useMemo(() => {
+    const totalAvailable = autoStandStats.reduce((sum, stand) => sum + stand.availableSeats, 0);
+    const totalCapacity = autoStandStats.reduce((sum, stand) => sum + stand.totalCapacity, 0);
+    const activeStands = autoStandStats.filter(stand => stand.availableSeats > 0).length;
+    const fleetAvailability = totalCapacity > 0 ? Math.round((totalAvailable / totalCapacity) * 100) : 0;
+    return { totalAvailable, totalCapacity, activeStands, fleetAvailability };
+  }, [autoStandStats]);
+
+  const standStatusConfig = {
+    active: {
+      label: 'Active',
+      badge: 'bg-emerald-100 text-emerald-700',
+      border: 'border-emerald-200',
+      bar: 'bg-emerald-500'
+    },
+    low: {
+      label: 'Low',
+      badge: 'bg-amber-100 text-amber-700',
+      border: 'border-amber-200',
+      bar: 'bg-amber-500'
+    },
+    busy: {
+      label: 'Busy',
+      badge: 'bg-red-100 text-red-700',
+      border: 'border-red-200',
+      bar: 'bg-red-500'
+    }
+  };
 
   return (
     <div className="p-8 h-full overflow-y-auto animate-fade-in flex flex-col gap-8 scrollbar-pro">
@@ -205,6 +270,85 @@ const metroDotColor = metro.status === 'delayed' ? 'bg-danger' :
                <p className="text-[11px] leading-relaxed text-text-muted font-medium">
                  AI is dynamically shifting feeder schedules to align with Metro Line 1 headers. This reduces hub congestion and contributes to <span className="text-primary font-bold">Goal 11.2</span>: Safe, affordable, accessible and sustainable transport systems.
                </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="glass p-8 rounded-[2rem] border-primary/10 bg-white shadow-lg flex flex-col gap-8">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <h2 className="text-3xl font-black tracking-tight text-accent">Last-Mile Auto-Rickshaw Network</h2>
+            <p className="text-[11px] font-black uppercase tracking-widest text-text-dim mt-2">Real-time feeder coverage at key interchange zones</p>
+          </div>
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+            <Sparkles size={16} className="text-primary" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary">Simulator-driven auto network telemetry</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          {autoStandStats.map(stand => {
+            const cfg = standStatusConfig[stand.status] || standStatusConfig.low;
+            return (
+              <div key={stand.route_id} className={`rounded-3xl border bg-white shadow-sm p-6 flex flex-col gap-5 ${cfg.border}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center text-2xl border border-amber-100">
+                      <span aria-hidden="true">🛺</span>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wide text-accent leading-tight">{stand.name}</h3>
+                      <span className={`inline-flex mt-2 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${cfg.badge}`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-end gap-1">
+                  <span className="text-4xl font-black tracking-tighter text-accent">{stand.availableSeats}</span>
+                  <span className="text-sm font-black text-text-dim">/ {stand.totalCapacity}</span>
+                </div>
+
+                <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                  <div className={`h-full rounded-full ${cfg.bar}`} style={{ width: `${Math.min(100, Math.round(stand.availabilityRatio * 100))}%` }}></div>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-text-dim">
+                  <span>~{stand.estimatedWait} min wait</span>
+                  <span>{stand.totalTrips} trips</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-text-dim border-t border-slate-100 pt-4">
+                  <span>{stand.route_id}</span>
+                  <span>{stand.eventAssignments} on event duty</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="rounded-3xl bg-slate-50 border border-slate-100 px-6 py-5 grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-text-dim">Total Available</span>
+            <p className="text-3xl font-black tracking-tighter text-accent mt-2">{autoSummary.totalAvailable}</p>
+          </div>
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-text-dim">Total Capacity</span>
+            <p className="text-3xl font-black tracking-tighter text-accent mt-2">{autoSummary.totalCapacity}</p>
+          </div>
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-text-dim">Fleet Availability</span>
+            <p className="text-3xl font-black tracking-tighter text-primary mt-2">{autoSummary.fleetAvailability}%</p>
+          </div>
+          <div className="flex items-center justify-between md:justify-end">
+            <div className="text-right">
+              <span className="text-[10px] font-black uppercase tracking-widest text-text-dim">Active Stands</span>
+              <p className="text-3xl font-black tracking-tighter text-accent mt-2">{autoSummary.activeStands}</p>
+            </div>
+            <div className="ml-4 w-14 h-14 rounded-full bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/20">
+              <Gauge size={26} />
             </div>
           </div>
         </div>

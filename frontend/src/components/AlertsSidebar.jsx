@@ -1,7 +1,22 @@
-import React from 'react';
-import { AlertCircle, Clock, CheckCircle, Info, Flame } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { AlertCircle, Clock, CheckCircle, Flame } from 'lucide-react';
 
 const AlertsSidebar = ({ alerts, onAcknowledge }) => {
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
+  const filterOptions = ['all', 'critical', 'high', 'medium', 'low'];
+  const categoryOptions = ['all', 'rerouting'];
+
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter(alert => {
+      const severityMatch = severityFilter === 'all' || (alert.severity || '').toLowerCase() === severityFilter;
+      const alertType = (alert.type || '').toLowerCase();
+      const categoryMatch = categoryFilter === 'all' || alertType === 'rerouting' || alertType === 'route_change';
+      return severityMatch && categoryMatch;
+    });
+  }, [alerts, severityFilter, categoryFilter]);
+
   const getSeverityClass = (severity) => {
     switch (severity?.toLowerCase()) {
       case 'critical': return 'alert-critical';
@@ -10,6 +25,19 @@ const AlertsSidebar = ({ alerts, onAcknowledge }) => {
       case 'low': return 'alert-low';
       default: return 'alert-default';
     }
+  };
+
+  const getCount = (option) => {
+    if (option === 'all') return alerts.length;
+    return alerts.filter(a => (a.severity || '').toLowerCase() === option).length;
+  };
+
+  const getCategoryCount = (category) => {
+    if (category === 'all') return alerts.length;
+    return alerts.filter(a => {
+      const type = (a.type || '').toLowerCase();
+      return type === 'rerouting' || type === 'route_change';
+    }).length;
   };
 
   const getIcon = (severity) => {
@@ -29,14 +57,52 @@ const AlertsSidebar = ({ alerts, onAcknowledge }) => {
         </span>
       </div>
 
+      <div className="px-4 pt-3 pb-2 dashboard-border-b flex flex-wrap gap-2">
+        {categoryOptions.map(option => {
+          const isActive = categoryFilter === option;
+          return (
+            <button
+              key={option}
+              onClick={() => setCategoryFilter(option)}
+              className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider border transition-colors ${
+                isActive
+                  ? 'bg-violet-100 border-violet-300 text-violet-700'
+                  : 'bg-transparent border-slate-200 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              {option} ({getCategoryCount(option)})
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="px-4 pt-3 pb-2 dashboard-border-b flex flex-wrap gap-2">
+        {filterOptions.map(option => {
+          const isActive = severityFilter === option;
+          return (
+            <button
+              key={option}
+              onClick={() => setSeverityFilter(option)}
+              className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase tracking-wider border transition-colors ${
+                isActive
+                  ? 'bg-primary/15 border-primary/40 text-primary'
+                  : 'bg-transparent border-slate-200 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              {option} ({getCount(option)})
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-        {alerts.length === 0 ? (
+        {filteredAlerts.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center opacity-30">
             <CheckCircle size={32} className="mb-2" />
-            <p className="text-sm">System clear</p>
+            <p className="text-sm">No alerts for selected filter</p>
           </div>
         ) : (
-          alerts.map((alert, idx) => (
+          filteredAlerts.map((alert, idx) => (
             <div 
               key={alert.id || idx} 
               className={`p-3 rounded-lg animate-fade-in relative alert-card ${getSeverityClass(alert.severity)}`}
@@ -54,6 +120,11 @@ const AlertsSidebar = ({ alerts, onAcknowledge }) => {
               <p className="text-xs font-medium mb-2">
                 {alert.message}
               </p>
+              <div className="mb-2">
+                <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                  {alert.type || 'general'}
+                </span>
+              </div>
               {!alert.acknowledged && (
                 <button 
                   onClick={() => onAcknowledge(alert.id)}

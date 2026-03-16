@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import LiveMap from '../components/LiveMap';
 import KPICard from '../components/KPICard';
 import AlertsSidebar from '../components/AlertsSidebar';
@@ -10,11 +10,19 @@ import {
   Activity, 
   Zap,
   Leaf,
-  Layers
+  Layers,
+  Fuel,
+  Route,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 const LiveOps = () => {
-  const { metrics = {}, buses = [], routes = [], depots = [], demandZones = [], alerts = [], events = [], refresh } = useFleet();
+  const { metrics = {}, buses = [], routes = [], autoRikshawRoutes = [], autoRikshaws = [], depots = [], demandZones = [], alerts = [], events = [], refresh } = useFleet();
+  const [isLegendMinimized, setIsLegendMinimized] = useState(false);
+  const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
 
   const handleAcknowledge = async (alertId) => {
     try {
@@ -62,19 +70,22 @@ const LiveOps = () => {
             colorClass="bg-success/10 text-success"
           />
           <KPICard
-            label="Energy Eff."
-            value={metrics.system_efficiency || '0'}
-            unit="idx"
-            icon={Zap}
-            colorClass="bg-info/10 text-info"
+            label="Fuel Used"
+            value={metrics.total_fuel_consumed ? metrics.total_fuel_consumed.toFixed(1) : '0'}
+            unit="L"
+            icon={Fuel}
+            colorClass="bg-emerald-500/10 text-emerald-600"
+          />
+          <KPICard
+            label="Empty KMs"
+            value={metrics.empty_distance_km ? metrics.empty_distance_km.toFixed(1) : '0'}
+            unit="km"
+            icon={Route}
+            colorClass="bg-amber-500/10 text-amber-600"
           />
         </div>
 
-        <div className="flex items-center gap-4 pl-4 border-l border-slate-100">
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] font-black uppercase tracking-widest text-text-dim">Transmission</span>
-            <span className="text-xs font-black text-success">ENCRYPTED</span>
-          </div>
+        <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
           <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300">
             <Layers size={20} />
           </div>
@@ -89,8 +100,11 @@ const LiveOps = () => {
           <LiveMap
             buses={buses}
             routes={routes}
+            autoRikshawRoutes={autoRikshawRoutes}
+            autoRikshaws={autoRikshaws}
             depots={depots}
             demandZones={demandZones}
+            events={events}
           />
 
           {/* Map Overlay Controls */}
@@ -166,6 +180,71 @@ const LiveOps = () => {
               );
             })}
 
+            {/* Map Index / Legend */}
+            <div className="glass rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg overflow-hidden w-[340px]">
+              <button
+                onClick={() => setIsLegendMinimized(prev => !prev)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
+              >
+                <span className="text-[11px] font-black uppercase tracking-widest text-accent">Map Index</span>
+                {isLegendMinimized ? (
+                  <ChevronDown size={16} className="text-slate-500" />
+                ) : (
+                  <ChevronUp size={16} className="text-slate-500" />
+                )}
+              </button>
+
+              {!isLegendMinimized && (
+                <div className="px-4 pb-4 pt-1 flex flex-col gap-4">
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Traffic Congestion</h4>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        Free Flow
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        Moderate
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                        Heavy
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                        Blocked Route / Detour Active
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-slate-200"></div>
+
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Bus Status Colors</h4>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        Active (Normal)
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                        Underutilized (&lt;30%)
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        Busy (&gt;60% Load)
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                        Crowded (&gt;85% Load)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
           {/* End Map Overlay Controls */}
 
@@ -173,8 +252,27 @@ const LiveOps = () => {
         {/* End Map Area */}
 
         {/* Alerts Sidebar */}
-        <div className="w-[380px] border-l border-slate-100 bg-white">
-          <AlertsSidebar alerts={alerts} onAcknowledge={handleAcknowledge} />
+        <div className={`${isAlertsCollapsed ? 'w-[56px]' : 'w-[380px]'} border-l border-slate-100 bg-white relative transition-all duration-300`}>
+          <button
+            onClick={() => setIsAlertsCollapsed(prev => !prev)}
+            className="absolute top-4 -left-4 z-10 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center text-slate-500 hover:text-accent transition-colors"
+            aria-label={isAlertsCollapsed ? 'Expand alerts' : 'Collapse alerts'}
+          >
+            {isAlertsCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+
+          {isAlertsCollapsed ? (
+            <div className="h-full flex flex-col items-center justify-start pt-16 gap-4">
+              <div className="rotate-180 [writing-mode:vertical-rl] text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">
+                Live Alerts
+              </div>
+              <span className="bg-danger text-white text-[9px] px-2 py-1 rounded-full font-black">
+                {alerts.filter(a => !a.acknowledged).length}
+              </span>
+            </div>
+          ) : (
+            <AlertsSidebar alerts={alerts} onAcknowledge={handleAcknowledge} />
+          )}
         </div>
 
       </div>

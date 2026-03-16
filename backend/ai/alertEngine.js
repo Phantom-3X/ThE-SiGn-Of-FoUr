@@ -208,5 +208,6 @@ module.exports = {
   runAlertChecks,
   getActiveAlerts,
   acknowledgeAlert,
-  createAlert
+  createAlert,
+  addAlert
 };

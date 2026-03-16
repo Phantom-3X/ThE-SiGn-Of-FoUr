@@ -169,3 +169,70 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out forwards;
 }
+
+/* Dark mode */
+html.dark body {
+  background-color: #0b1220;
+  color: #e2e8f0;
+}
+
+html.dark .glass {
+  background: #111827;
+  border-color: #334155;
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.7);
+}
+
+html.dark .nav-sidebar {
+  background: #111827;
+  border-right-color: #334155;
+}
+
+html.dark .nav-link {
+  color: #94a3b8;
+}
+
+html.dark .nav-link:hover,
+html.dark .nav-link-active {
+  color: #34d399;
+  background: #1f2937;
+}
+
+html.dark .leaflet-container {
+  background: #0f172a !important;
+}
+
+html.dark .bg-main {
+  background-color: #0b1220 !important;
+}
+
+html.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #1f2937 !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #334155 !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: #334155 !important;
+}
+
+html.dark .text-accent,
+html.dark .text-text-main {
+  color: #e5e7eb !important;
+}
+
+html.dark .text-text-dim,
+html.dark .text-text-muted,
+html.dark .text-slate-400,
+html.dark .text-slate-500,
+html.dark .text-slate-600,
+html.dark .text-slate-700 {
+  color: #94a3b8 !important;
+}

@@ -5,6 +5,12 @@
  */
 
 const systemState = require("../state/systemState");
+const { addAlert, createAlert } = require("../ai/alertEngine");
+const { ALERT_TYPES, SEVERITY } = require("../config/constants");
+
+// Pre-generated alternative OSRM paths (written by generateAltPaths.js)
+let altPaths = {};
+try { altPaths = require("../data/altPaths"); } catch(e) { console.warn('[FleetController] altPaths.js not found — run generateAltPaths.js first'); }
 
 // Counter for generating unique bus IDs
 let busIdCounter = 100;
@@ -57,6 +63,14 @@ function deployBus(depotId, routeId) {
   depot.idle_buses--;
 
   console.log(`[FleetController] Deployed ${busId} from ${depot.name} to ${route.name}`);
+
+  // Push notification to UI
+  addAlert(createAlert(
+    ALERT_TYPES.ROUTE_CHANGE,
+    SEVERITY.INFO,
+    `Bus deployed: ${busId} from ${depot.name} to Route ${route.route_id}`,
+    { bus_id: busId, route_id: routeId, action: 'deploy' }
+  ));
 
   return {
     success: true,
@@ -160,10 +174,62 @@ function rebalanceBuses(fromRouteId, toRouteId, count) {
 
   console.log(`[FleetController] Rebalanced ${toMove} buses from ${fromRoute.name} to ${toRoute.name}`);
 
+  // Push notification to UI
+  addAlert(createAlert(
+    ALERT_TYPES.ROUTE_CHANGE,
+    SEVERITY.INFO,
+    `Rebalanced ${toMove} bus(es) from Route ${fromRouteId} to Route ${toRouteId}`,
+    { from_route: fromRouteId, to_route: toRouteId, count: toMove, action: 'rebalance' }
+  ));
+
   return {
     success: true,
     message: `Moved ${toMove} buses from ${fromRoute.name} to ${toRoute.name}`,
     movedBuses
+  };
+}
+
+function rerouteBus(busId, routeId) {
+  const bus = systemState.buses.find(b => b.bus_id === busId);
+  if (!bus) {
+    return { success: false, message: `Bus ${busId} not found` };
+  }
+
+  const route = systemState.routes.find(r => r.route_id === routeId);
+  if (!route) {
+    return { success: false, message: `Route ${routeId} not found` };
+  }
+
+  if (bus.route_id === routeId) {
+    return { success: false, message: `Bus ${busId} is already on route ${routeId}` };
+  }
+
+  const originalRouteId = bus.route_id;
+  const firstStop = route.stops[0];
+
+  bus.route_id = routeId;
+  bus.lat = firstStop.lat;
+  bus.lng = firstStop.lng;
+  bus.manual_reroute = {
+    previous_route_id: originalRouteId,
+    changed_at: new Date().toISOString()
+  };
+
+  console.log(`[FleetController] Bus ${busId} manually rerouted from ${originalRouteId} to ${routeId}`);
+
+  addAlert(createAlert(
+    ALERT_TYPES.ROUTE_CHANGE,
+    SEVERITY.MEDIUM,
+    `Manual reroute: ${busId} moved from Route ${originalRouteId} to Route ${routeId}`,
+    { bus_id: busId, route_id: routeId, previous_route_id: originalRouteId, action: 'manual_reroute' }
+  ));
+
+  return {
+    success: true,
+    message: `Bus ${busId} rerouted to ${route.name}`,
+    bus_id: busId,
+    previous_route_id: originalRouteId,
+    new_route_id: routeId
   };
 }
 
@@ -318,6 +384,81 @@ function emergencyDispatch(routeId, count) {
   };
 }
 
+/**
+ * Update optimization weights manually from the dashboard
+ */
+function updateOptimizationWeights(wait_time, fuel_efficiency, empty_km) {
+  systemState.optimization_weights = {
+    wait_time: Math.max(0, Math.min(100, wait_time)),
+    fuel_efficiency: Math.max(0, Math.min(100, fuel_efficiency)),
+    empty_km: Math.max(0, Math.min(100, empty_km))
+  };
+
+  console.log(`[FleetController] Optimization Weights Updated: Wait=${systemState.optimization_weights.wait_time}%, Fuel=${systemState.optimization_weights.fuel_efficiency}%, EmptyKm=${systemState.optimization_weights.empty_km}%`);
+
+  return {
+    success: true,
+    message: "Optimization weights updated successfully",
+    weights: systemState.optimization_weights
+  };
+}
+
+/**
+ * Block a route: set is_blocked = true, attach alt_path, alert UI
+ */
+function blockRoute(routeId) {
+  const route = systemState.routes.find(r => r.route_id === routeId);
+  if (!route) return { success: false, message: `Route ${routeId} not found` };
+  if (route.is_blocked) return { success: false, message: `Route ${routeId} is already blocked` };
+
+  route.is_blocked = true;
+
+  // Attach pre-generated alternative path if available
+  const alt = altPaths[routeId];
+  if (alt) {
+    route.alt_path = alt.alt_path;
+    route.alt_stops = alt.alt_stops;
+  } else {
+    // Fallback: use the existing stops as alt (simple detour)
+    route.alt_path = route.path || route.stops;
+    route.alt_stops = route.stops;
+    console.warn(`[FleetController] No pre-generated alt path for ${routeId} — using original path`);
+  }
+
+  console.log(`[FleetController] Route ${routeId} BLOCKED → diverting buses to alt path`);
+
+  addAlert(createAlert(
+    ALERT_TYPES.ROUTE_CHANGE,
+    SEVERITY.HIGH,
+    `🚧 Route ${routeId} (${route.name}) is now BLOCKED — buses diverted to alternative path`,
+    { route_id: routeId, action: 'blocked' }
+  ));
+
+  return { success: true, message: `Route ${routeId} blocked. Buses are diverting.` };
+}
+
+/**
+ * Unblock a route: restore normal operation
+ */
+function unblockRoute(routeId) {
+  const route = systemState.routes.find(r => r.route_id === routeId);
+  if (!route) return { success: false, message: `Route ${routeId} not found` };
+  if (!route.is_blocked) return { success: false, message: `Route ${routeId} is not currently blocked` };
+
+  route.is_blocked = false;
+
+  console.log(`[FleetController] Route ${routeId} UNBLOCKED → buses returning to original path`);
+
+  addAlert(createAlert(
+    ALERT_TYPES.ROUTE_CHANGE,
+    SEVERITY.INFO,
+    `✅ Route ${routeId} (${route.name}) has been UNBLOCKED — buses returning to original path`,
+    { route_id: routeId, action: 'unblocked' }
+  ));
+
+  return { success: true, message: `Route ${routeId} unblocked. Buses returning to normal path.` };
+}
+
 // =============================================================================
 // EXPORTED FUNCTIONS
 // =============================================================================
@@ -327,9 +468,13 @@ module.exports = {
   returnBusToDepot,
   changeRouteFrequency,
   rebalanceBuses,
+  rerouteBus,
   getFleetDistribution,
   emergencyDispatch,
   getBusDetails,
   getRouteDetails,
-  getBusesFiltered
+  getBusesFiltered,
+  updateOptimizationWeights,
+  blockRoute,
+  unblockRoute
 };

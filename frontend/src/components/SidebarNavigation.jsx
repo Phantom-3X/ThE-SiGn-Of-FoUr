@@ -1,7 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
-  BarChart3, 
   Map, 
   Settings2, 
   LineChart, 
@@ -41,13 +40,6 @@ const SidebarNavigation = () => {
             <span className="nav-tooltip">{item.label}</span>
           </NavLink>
         ))}
-      </div>
-
-      <div className="mt-auto">
-        <button className="nav-link bg-transparent border-none cursor-pointer">
-          <BarChart3 size={20} />
-          <span className="nav-tooltip">System Status</span>
-        </button>
       </div>
     </nav>
   );

@@ -44,6 +44,8 @@ export const useFleetData = (interval = 3000) => {
   return {
     routes: data?.routes || [],
     buses: data?.buses || [],
+    autoRikshawRoutes: data?.autoRikshawRoutes || [],
+    autoRikshaws: data?.autoRikshaws || [],
     depots: data?.depots || [],
     demandZones: data?.demandZones || [],
     metro: data?.metro || {},

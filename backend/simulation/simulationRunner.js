@@ -16,9 +16,10 @@ const systemState = require("../state/systemState");
 
 // Import simulation modules
 const startBusSimulation = require("./busSimulator");
+const startAutoRikshawSimulation = require("./autoRikshawSimulator");
 const startDemandSimulation = require("./demandSimulator");
 const startMetroSimulation = require("./metroSimulator");
-const startEventSimulation = require("./eventSimulator");
+const { startEventSimulation } = require("./eventSimulator");
 
 // Import AI engines
 const { startPredictionEngine } = require("../ai/predictionEngine");
@@ -48,6 +49,7 @@ function startSimulations() {
   // Start simulation modules
   console.log("\n[SimulationRunner] Starting simulation modules...");
   startBusSimulation();
+  startAutoRikshawSimulation();
   startDemandSimulation();
   startMetroSimulation();
   startEventSimulation();

@@ -25,6 +25,8 @@
 
 const routes = require("../data/routes");
 const buses = require("../data/buses");
+const autoRikshawRoutes = require("../data/autoRikshawRoutes");
+const autoRikshaws = require("../data/autoRikshaws");
 const depots = require("../data/depots");
 const demandZones = require("../data/demandZones");
 const metro = require("../data/metro");
@@ -39,6 +41,10 @@ const systemState = {
   
   // Dynamic bus fleet (positions updated by simulation)
   buses: buses,
+
+  // Auto-rikshaw routes and live fleet
+  autoRikshawRoutes: autoRikshawRoutes,
+  autoRikshaws: autoRikshaws,
   
   // Depot status (idle buses updated by fleet operations)
   depots: depots,
@@ -68,8 +74,20 @@ const systemState = {
     route_balance: 0,
     active_buses: buses.filter(b => b.status === "active").length,
     total_buses: buses.length,
+    active_auto_rikshaws: autoRikshaws.filter(r => r.status !== "maintenance").length,
+    total_auto_rikshaws: autoRikshaws.length,
     active_alerts: 0,
+    total_distance_km: 0,
+    empty_distance_km: 0,
+    total_fuel_consumed: 0,
     last_updated: new Date().toISOString()
+  },
+  
+  // Weights for Multi-Objective Optimization (can be adjusted by operators)
+  optimization_weights: {
+    wait_time: 33,     // Priority on passenger wait time
+    fuel_efficiency: 33, // Priority on minimizing fuel
+    empty_km: 34       // Priority on minimizing empty running
   },
   
   // Simulation metadata
