@@ -120,6 +120,54 @@ function calculateSystemEfficiency() {
   return Math.round(Math.min(100, Math.max(0, efficiency)));
 }
 
+/**
+ * Phase 2 — Generate Multi-Objective Optimisation Scores
+ */
+function calculateOptimisationScores() {
+  const currentAvgWait = calculateAverageWaitTime();
+  
+  // OBJECTIVE 1 — Passenger wait score
+  const waitScore = Math.min(currentAvgWait / 15, 1.0);
+
+  // OBJECTIVE 2 — Fuel score
+  const activeBuses = systemState.buses.filter(b => b.status !== "idle").length;
+  const totalDemand = systemState.demandZones.reduce((sum, zone) => sum + zone.current_demand, 0);
+  const fuelScore = activeBuses > 0 
+    ? Math.min(activeBuses / Math.max(totalDemand / 10, 1), 1.0)
+    : 0;
+
+  // OBJECTIVE 3 — Empty km score
+  const emptyBuses = systemState.buses.filter(
+    b => b.current_load / b.capacity < 0.30 && b.status === "active"
+  ).length;
+  const emptyKmScore = systemState.buses.length > 0 
+    ? emptyBuses / systemState.buses.length
+    : 0;
+
+  // COMBINED SCORE
+  const { w1, w2, w3 } = systemState.optimisationWeights;
+  const combinedScoreRaw = (w1 * waitScore) + (w2 * fuelScore) + (w3 * emptyKmScore);
+  const combinedScore = Math.round(combinedScoreRaw * 10000) / 10000; // Round to 4 decimal places
+
+  // BINDING CONSTRAINT
+  const constraints = [
+    { key: "waitTime", weighted: w1 * waitScore },
+    { key: "fuel",     weighted: w2 * fuelScore },
+    { key: "emptyKm",  weighted: w3 * emptyKmScore }
+  ];
+  constraints.sort((a, b) => b.weighted - a.weighted);
+  const bindingConstraint = constraints[0].key;
+
+  systemState.optimisationScores = {
+    waitScore,
+    fuelScore,
+    emptyKmScore,
+    combinedScore,
+    bindingConstraint,
+    lastUpdated: Date.now()
+  };
+}
+
 // =============================================================================
 // UPDATE & ACCESS
 // =============================================================================
@@ -132,16 +180,37 @@ function updateMetrics() {
     b => b.status !== "idle" && b.status !== "maintenance"
   ).length;
 
+  const currentWait = calculateAverageWaitTime();
+
+  // Phase 6 — record baseline at tick 10
+  systemState.simulation.tick_count = (systemState.simulation.tick_count || 0) + 1;
+  if (systemState.simulation.tick_count === 10 && systemState.metrics.baselineWaitTime === null) {
+    systemState.metrics.baselineWaitTime = currentWait;
+    console.log(`[MetricsController] Baseline wait time locked at ${currentWait} min (tick 10)`);
+  }
+
+  const baselineWaitTime = systemState.metrics.baselineWaitTime;
+  const waitTimeReduction = (baselineWaitTime && baselineWaitTime > 0)
+    ? Math.round(((baselineWaitTime - currentWait) / baselineWaitTime) * 100 * 10) / 10
+    : 0;
+
+  // Phase 2 — Calculate optimisation scores
+  calculateOptimisationScores();
+
   systemState.metrics = {
     fleet_utilization: calculateFleetUtilization(),
     passenger_throughput: calculatePassengerThroughput(),
-    average_wait_time: calculateAverageWaitTime(),
+    average_wait_time: currentWait,
     system_efficiency: calculateSystemEfficiency(),
     demand_fulfillment: calculateDemandFulfillment(),
     route_balance: calculateRouteBalance(),
     active_buses: activeBuses,
     total_buses: systemState.buses.length,
     active_alerts: systemState.alerts.filter(a => !a.acknowledged).length,
+    // Phase 6
+    baselineWaitTime: baselineWaitTime,
+    waitTimeReduction: waitTimeReduction,
+    targetReduction: 25,
     last_updated: new Date().toISOString()
   };
 
@@ -165,7 +234,11 @@ function getDashboardMetrics() {
     throughput: { value: systemState.metrics.passenger_throughput, unit: "pax", label: "Passengers On Board" },
     efficiency: { value: systemState.metrics.system_efficiency, unit: "%", label: "System Efficiency" },
     fulfillment: { value: systemState.metrics.demand_fulfillment, unit: "%", label: "Demand Fulfillment" },
-    routeBalance: { value: systemState.metrics.route_balance, unit: "%", label: "Route Balance" }
+    routeBalance: { value: systemState.metrics.route_balance, unit: "%", label: "Route Balance" },
+    // Phase 6
+    baselineWaitTime: systemState.metrics.baselineWaitTime,
+    waitTimeReduction: systemState.metrics.waitTimeReduction,
+    targetReduction: 25
   };
 }
 

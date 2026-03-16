@@ -164,8 +164,17 @@ function updateZoneDemand(zone) {
   demand = Math.round(demand);
   demand = Math.max(DEMAND_MIN, Math.min(DEMAND_MAX, demand));
 
+  // Record previous demand for velocity calculation (Spec 1)
+  zone.prevDemand = zone.current_demand || 0;
+
   // Update current demand
   zone.current_demand = demand;
+
+  // Compute delta and velocity (Spec 1)
+  zone.demandDelta = zone.current_demand - zone.prevDemand;
+  zone.demandVelocity = zone.base_demand > 0
+    ? (zone.demandDelta / zone.base_demand * 100)
+    : 0;
 
   // Record in history for trend computation
   recordHistory(zone.zone_id, demand);

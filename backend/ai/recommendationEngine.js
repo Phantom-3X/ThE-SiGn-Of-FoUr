@@ -3,29 +3,44 @@
  *
  * Generates fleet optimization recommendations based on system state.
  * Runs every 10 seconds, stores top 5 in systemState.recommendations.
+ *
+ * Phase 1: Also runs autoDispatch() loop — if a route load > 0.85 and idle bus exists,
+ *          automatically deploys a bus and logs to systemState.autoDispatchLog.
  */
 
 const systemState = require("../state/systemState");
 const { OVERCROWDED_THRESHOLD, UNDERUTILIZED_THRESHOLD, ALERT_TYPES } = require("../config/constants");
+const { deployBus } = require("../controllers/fleetController");
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+            Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const RECOMMENDATION_INTERVAL = 10000; // 10 seconds
+const AUTO_DISPATCH_INTERVAL  = 10000; // 10 seconds
 
 const RECOMMENDATION_TYPES = {
-  DEPLOY_BUS: "deploy_bus",
+  DEPLOY_BUS:         "deploy_bus",
   INCREASE_FREQUENCY: "increase_frequency",
   DECREASE_FREQUENCY: "decrease_frequency",
-  REBALANCE_FLEET: "rebalance_fleet",
-  METRO_SUPPORT: "metro_support",
-  EXTEND_ROUTE: "extend_route",
-  ADD_STOP: "add_stop",
-  EXPRESS_VARIANT: "express_variant",
-  REROUTE: "reroute"
+  REBALANCE_FLEET:    "rebalance_fleet",
+  METRO_SUPPORT:      "metro_support",
+  EXTEND_ROUTE:       "extend_route",
+  ADD_STOP:           "add_stop",
+  EXPRESS_VARIANT:    "express_variant",
+  REROUTE:            "reroute"
 };
 
 const PRIORITY = {
-  LOW: 1,
+  LOW:    1,
   MEDIUM: 2,
-  HIGH: 3,
+  HIGH:   3,
   URGENT: 4
 };
 
@@ -53,7 +68,7 @@ function getRouteLoadStats() {
     if (!routeStats[bus.route_id]) {
       routeStats[bus.route_id] = { totalLoad: 0, totalCapacity: 0, busCount: 0 };
     }
-    routeStats[bus.route_id].totalLoad += bus.current_load;
+    routeStats[bus.route_id].totalLoad    += bus.current_load;
     routeStats[bus.route_id].totalCapacity += bus.capacity;
     routeStats[bus.route_id].busCount++;
   });
@@ -139,7 +154,7 @@ function generateRebalancingRecommendations() {
   const routeStats = getRouteLoadStats();
 
   const highDemand = [];
-  const lowDemand = [];
+  const lowDemand  = [];
 
   Object.entries(routeStats).forEach(([routeId, stats]) => {
     if (stats.loadFactor > 0.8) highDemand.push({ routeId, ...stats });
@@ -148,9 +163,9 @@ function generateRebalancingRecommendations() {
 
   if (highDemand.length > 0 && lowDemand.length > 0) {
     const from = lowDemand[0];
-    const to = highDemand[0];
+    const to   = highDemand[0];
     const fromRoute = systemState.routes.find(r => r.route_id === from.routeId);
-    const toRoute = systemState.routes.find(r => r.route_id === to.routeId);
+    const toRoute   = systemState.routes.find(r => r.route_id === to.routeId);
 
     recs.push(createRecommendation(
       RECOMMENDATION_TYPES.REBALANCE_FLEET,
@@ -166,12 +181,11 @@ function generateRebalancingRecommendations() {
 // ── Rule 4: Metro disruption support ─────────────────────────────────────────
 
 function generateMetroSupportRecommendations() {
-  const recs = [];
+  const recs  = [];
   const metro = systemState.metro;
 
   if (metro.status === "delayed" && metro.delay_minutes >= 10) {
-    // Find routes that pass near metro stations
-    const nearbyRoutes = systemState.routes.slice(0, 3); // top 3 as proxy
+    const nearbyRoutes = systemState.routes.slice(0, 3);
     nearbyRoutes.forEach(route => {
       recs.push(createRecommendation(
         RECOMMENDATION_TYPES.METRO_SUPPORT,
@@ -187,23 +201,16 @@ function generateMetroSupportRecommendations() {
 
 // ── Rule 5: AI Route Suggestions ─────────────────────────────────────────────
 
-/**
- * Calculate distance between two lat/lng points in km (Haversine)
- */
 function distanceKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Check if a demand zone is covered by any existing route stop
- * Coverage radius: 1.5km
- */
 function isZoneCovered(zone) {
   const COVERAGE_RADIUS_KM = 1.5;
   for (const route of systemState.routes) {
@@ -216,9 +223,6 @@ function isZoneCovered(zone) {
   return false;
 }
 
-/**
- * Find nearest route to a zone
- */
 function nearestRoute(zone) {
   let minDist = Infinity;
   let nearest = null;
@@ -237,10 +241,9 @@ function nearestRoute(zone) {
 function generateRouteSuggestions() {
   const recs = [];
 
-  // ── Suggestion 1: Extend route to uncovered high-demand zones
   systemState.demandZones.forEach(zone => {
-    if (zone.current_demand < 70) return; // only high-demand zones
-    if (isZoneCovered(zone)) return;      // already covered
+    if (zone.current_demand < 70) return;
+    if (isZoneCovered(zone)) return;
 
     const nearest = nearestRoute(zone);
     if (!nearest) return;
@@ -253,12 +256,11 @@ function generateRouteSuggestions() {
     ));
   });
 
-  // ── Suggestion 2: Add stop for surging zones near existing routes
   systemState.demandZones.forEach(zone => {
     if (!zone.predicted_demand || zone.predicted_demand <= zone.current_demand * 1.2) return;
 
     const nearest = nearestRoute(zone);
-    if (!nearest || nearest.distanceKm > 1.5) return; // must be close
+    if (!nearest || nearest.distanceKm > 1.5) return;
 
     recs.push(createRecommendation(
       RECOMMENDATION_TYPES.ADD_STOP,
@@ -268,7 +270,6 @@ function generateRouteSuggestions() {
     ));
   });
 
-  // ── Suggestion 3: Express variant for consistently overcrowded routes
   const routeStats = getRouteLoadStats();
   Object.entries(routeStats).forEach(([routeId, stats]) => {
     if (stats.loadFactor < 0.85) return;
@@ -284,9 +285,8 @@ function generateRouteSuggestions() {
     ));
   });
 
-  // ── Suggestion 4: Reroute when metro is delayed
   const metro = systemState.metro;
-  if (metro.status === 'delayed' && metro.delay_minutes >= 10) {
+  if (metro.status === "delayed" && metro.delay_minutes >= 10) {
     systemState.routes.forEach(route => {
       const nearMetro = route.stops.some(stop =>
         metro.stations && metro.stations.some(st =>
@@ -304,7 +304,7 @@ function generateRouteSuggestions() {
     });
   }
 
-  return recs.slice(0, 3); // max 3 route suggestions at a time
+  return recs.slice(0, 3);
 }
 
 // ── Generate all & store ─────────────────────────────────────────────────────
@@ -318,7 +318,6 @@ function generateAllRecommendations() {
     ...generateRouteSuggestions()
   ];
 
-  // Sort by priority descending (urgent first)
   const priorityMap = { urgent: 4, high: 3, medium: 2, low: 1 };
   all.sort((a, b) => (priorityMap[b.priority] || 0) - (priorityMap[a.priority] || 0));
 
@@ -329,24 +328,123 @@ function getTopRecommendations(count = 8) {
   return generateAllRecommendations().slice(0, count);
 }
 
-/**
- * Periodic runner — store top 5 recommendations in systemState.
- */
 function runRecommendationEngine() {
   systemState.recommendations = getTopRecommendations(5);
   console.log(`[RecommendationEngine] ${systemState.recommendations.length} recommendations generated`);
+}
+
+// =============================================================================
+// PHASE 1 — AUTO-DISPATCH
+// =============================================================================
+
+const AUTO_DISPATCH_LOG_MAX = 50;
+
+function autoDispatch() {
+  if (!systemState.rebalancingConfig.autoDispatchEnabled) return;
+
+  const now = Date.now();
+
+  // Rate limit: max dispatches per 60 seconds
+  const recentDispatches = systemState.autoDispatchLog.filter(
+    e => now - new Date(e.timestamp).getTime() < 60000
+  ).length;
+  if (recentDispatches >= systemState.rebalancingConfig.maxDispatchPerMinute) return;
+
+  const idleBusCount = systemState.depots.reduce(
+    (sum, d) => sum + d.idle_buses, 0
+  );
+  if (idleBusCount === 0) return; // SPEC 8 — graceful empty depot handling
+
+  // Score every route by combining load factor + demand velocity of its zones
+  const routeScores = systemState.routes.map(route => {
+    const buses = systemState.buses.filter(b => b.route_id === route.route_id);
+    const totalLoad = buses.reduce((s, b) => s + b.current_load, 0);
+    const totalCap  = buses.reduce((s, b) => s + b.capacity, 0);
+    const loadFactor = totalCap > 0 ? totalLoad / totalCap : 0;
+
+    // Find demand zones whose stops overlap this route (nearest zone to any stop)
+    const routeZones = systemState.demandZones.filter(zone => {
+      return route.stops.some(stop => {
+        const dist = haversine(stop.lat, stop.lng, zone.lat, zone.lng);
+        return dist < 1500; // within 1.5 km
+      });
+    });
+
+    const avgVelocity = routeZones.length > 0
+      ? routeZones.reduce((s, z) => s + (z.demandVelocity || 0), 0) / routeZones.length
+      : 0;
+
+    // Combined urgency score
+    const urgencyScore = (loadFactor * systemState.rebalancingConfig.loadWeight) + 
+                         (Math.max(avgVelocity, 0) / 100 * systemState.rebalancingConfig.velocityWeight);
+
+    return { route, loadFactor, avgVelocity, urgencyScore, routeZones };
+  });
+
+  // Sort by urgency descending
+  routeScores.sort((a, b) => b.urgencyScore - a.urgencyScore);
+
+  const top = routeScores[0];
+  if (!top || top.urgencyScore < systemState.rebalancingConfig.urgencyThreshold) return; // below trigger threshold
+
+  // Scale buses to deploy based on urgency
+  let busesToDeploy;
+  if (top.urgencyScore >= 0.90) busesToDeploy = 3;
+  else if (top.urgencyScore >= 0.75) busesToDeploy = 2;
+  else busesToDeploy = 1;
+
+  // Cap by available idle buses
+  busesToDeploy = Math.min(busesToDeploy, idleBusCount, systemState.rebalancingConfig.maxDispatchPerMinute - recentDispatches);
+
+  const deployed = [];
+  for (let i = 0; i < busesToDeploy; i++) {
+    // null depotId theoretically auto-picks depot? Wait, fleetController deployBus requires depotId.
+    // Let's find the first depot with idle buses.
+    const depot = systemState.depots.find(d => d.idle_buses > 0);
+    if (!depot) break;
+
+    const result = deployBus(depot.depot_id, top.route.route_id); 
+    if (result.success) {
+      deployed.push(result.bus_id);
+      systemState.autoDispatchLog.unshift({ // use unshift to put newest at the start like before
+        timestamp: new Date(now).toISOString(),
+        route_id: top.route.route_id,
+        bus_id: result.bus_id,
+        trigger: "auto",
+        urgencyScore: top.urgencyScore.toFixed(3),
+        loadFactor: top.loadFactor.toFixed(3),
+        demandVelocity: top.avgVelocity.toFixed(2),
+        busesDeployed: busesToDeploy
+      });
+    }
+  }
+
+  // Trim log to last 100 entries
+  if (systemState.autoDispatchLog.length > 100) {
+    systemState.autoDispatchLog = systemState.autoDispatchLog.slice(0, 100);
+  }
+
+  if (deployed.length > 0) {
+    console.log(`[AutoDispatch] Deployed ${deployed.length} bus(es) to ${top.route.route_id} — urgency: ${top.urgencyScore.toFixed(2)}`);
+  }
 }
 
 function startRecommendationEngine() {
   console.log("[RecommendationEngine] Initializing recommendation engine...");
   setInterval(runRecommendationEngine, RECOMMENDATION_INTERVAL);
   console.log(`[RecommendationEngine] Running every ${RECOMMENDATION_INTERVAL}ms`);
+
+  // Phase 1: auto-dispatch loop
+  console.log("[AutoDispatch] Starting auto-dispatch loop...");
+  setInterval(autoDispatch, AUTO_DISPATCH_INTERVAL);
+  console.log(`[AutoDispatch] Running every ${AUTO_DISPATCH_INTERVAL}ms`);
 }
 
 module.exports = {
   startRecommendationEngine,
   generateAllRecommendations,
   getTopRecommendations,
+  autoDispatch,
   RECOMMENDATION_TYPES,
   PRIORITY
 };

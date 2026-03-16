@@ -4,10 +4,10 @@ import { fetchDashboardData } from '../services/api';
 const FleetContext = createContext();
 
 export const FleetProvider = ({ children, interval = 3000 }) => {
-  const [data, setData] = useState(null);
+  const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const timerRef = useRef(null);
+  const [error, setError]     = useState(null);
+  const timerRef              = useRef(null);
 
   const fetchData = async () => {
     try {
@@ -25,22 +25,51 @@ export const FleetProvider = ({ children, interval = 3000 }) => {
   useEffect(() => {
     fetchData();
     timerRef.current = setInterval(fetchData, interval);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [interval]);
 
   const value = {
     ...data,
-    routes: data?.routes || [],
-    buses: data?.buses || [],
-    depots: data?.depots || [],
-    demandZones: data?.demandZones || [],
-    metro: data?.metro || {},
-    alerts: data?.alerts || [],
-    metrics: data?.metrics || {},
-    predictions: data?.predictions || {},
-    simulation: data?.simulation || {},
+    // Core
+    routes:             data?.routes             || [],
+    buses:              data?.buses              || [],
+    depots:             data?.depots             || [],
+    demandZones:        data?.demandZones        || [],
+    metro:              data?.metro              || {},
+    alerts:             data?.alerts             || [],
+    metrics:            data?.metrics            || {},
+    metricsFormatted:   data?.metricsFormatted   || {},
+    recommendations:    data?.recommendations    || [],
+    events:             data?.events             || [],
+    routeStats:         data?.routeStats         || [],
+    zoneStats:          data?.zoneStats          || [],
+    alertStats:         data?.alertStats         || {},
+    fleetDistribution:  data?.fleetDistribution  || {},
+    systemStatus:       data?.systemStatus       || {},
+    predictions:        data?.predictions        || {},
+
+    // Phase 1 — Auto-dispatch
+    autoDispatchEnabled: data?.autoDispatchEnabled ?? true,
+    autoDispatchLog:     data?.autoDispatchLog    || [],
+
+    // Phase 2 — Optimisation
+    optimisationScore: data?.optimisationScore || {},
+
+    // Phase 3 — Blockages
+    blockages: data?.blockages || [],
+
+    // Phase 4 — Rickshaws
+    rickshaws:           data?.rickshaws           || [],
+    rickshawAssignments: data?.rickshawAssignments || [],
+    lastMileGaps:        data?.lastMileGaps        || [],
+
+    // Phase 5 — Prediction accuracy
+    predictionAccuracy: data?.predictionAccuracy || {},
+
+    // Phase 7 — Surge
+    activeSurge:  data?.activeSurge  || null,
+    surgeReports: data?.surgeReports || [],
+
     loading,
     error,
     refresh: fetchData

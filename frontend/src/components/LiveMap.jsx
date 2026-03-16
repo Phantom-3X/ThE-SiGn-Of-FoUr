@@ -135,25 +135,78 @@ const LiveMap = ({ buses = [], depots = [], routes = [], demandZones = [] }) => 
 
 
             {/* Demand Zones */}
-            {demandZones.map(zone => (
-                <Circle
-                    key={zone.zone_id}
-                    center={[zone.lat, zone.lng]}
-                    radius={1000}
-                    pathOptions={{
-                        fillColor: zone.current_demand > 90 ? '#ef4444' : '#f59e0b',
-                        fillOpacity: (zone.current_demand / 150) * 0.4,
-                        color: 'transparent'
-                    }}
-                >
-                    <Popup>
-                        <div className="text-slate-900">
-                            <strong>{zone.name}</strong><br/>
-                            Demand: {zone.current_demand}
-                        </div>
-                    </Popup>
-                </Circle>
-            ))}
+            {demandZones.map(zone => {
+                const vel = zone.demandVelocity || 0;
+                let strokeColor = 'transparent';
+                let strokeWidth = 0;
+                let className = '';
+                let radius = 1000;
+
+                if (vel > 25) {
+                    strokeColor = '#ef4444'; // red ring + larger
+                    strokeWidth = 3;
+                    radius = 1500;
+                    className = 'animate-pulse';
+                } else if (vel > 10) {
+                    strokeColor = '#f97316'; // orange ring
+                    strokeWidth = 2;
+                    className = 'animate-pulse';
+                } else if (vel < -10) {
+                    strokeColor = '#94a3b8'; // grey ring
+                    strokeWidth = 2;
+                }
+
+                // Compute nearest bus ETA
+                let etaQuery = '—';
+                if (buses.length > 0) {
+                    let minDist = Infinity;
+                    buses.forEach(b => {
+                        const d = calculateBearing(zone.lat, zone.lng, b.lat, b.lng); // Using bearing formula to get rough distance here is wrong, we need haversine
+                        // let's do a simple haversine inline
+                        const R = 6371; // km
+                        const dLat = (b.lat - zone.lat) * Math.PI / 180;
+                        const dLng = (b.lng - zone.lng) * Math.PI / 180;
+                        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                  Math.cos(zone.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) *
+                                  Math.sin(dLng/2) * Math.sin(dLng/2);
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        const distKm = R * c;
+                        if (distKm < minDist) minDist = distKm;
+                    });
+                    if (minDist !== Infinity) {
+                        const hrs = minDist / 20; // 20km/h avg speed
+                        const mins = Math.round(hrs * 60);
+                        etaQuery = `${mins} min`;
+                    }
+                }
+
+                return (
+                    <Circle
+                        key={zone.zone_id}
+                        center={[zone.lat, zone.lng]}
+                        radius={radius}
+                        className={className}
+                        pathOptions={{
+                            fillColor: zone.current_demand > 90 ? '#ef4444' : '#f59e0b',
+                            fillOpacity: (zone.current_demand / 150) * 0.4,
+                            color: strokeColor,
+                            weight: strokeWidth
+                        }}
+                    >
+                        <Popup>
+                            <div className="text-slate-900 font-sans">
+                                <strong>{zone.name}</strong><br/>
+                                Current demand: {zone.current_demand}<br/>
+                                Predicted: {zone.predicted_demand || '—'}<br/>
+                                Velocity: <span className={vel > 0 ? "text-emerald-600 font-bold" : vel < 0 ? "text-slate-500 font-bold" : ""}>
+                                    {vel > 0 ? '▲ +' : vel < 0 ? '▼ ' : ''}{vel.toFixed(1)}%
+                                </span><br/>
+                                Nearest bus ETA: {etaQuery}
+                            </div>
+                        </Popup>
+                    </Circle>
+                );
+            })}
 
             {/* Depots */}
             {depots.map(depot => (
